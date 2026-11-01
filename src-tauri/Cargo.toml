@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "nexus"
 version = "1.0.0"
 license = "MIT"
@@ -17,7 +17,7 @@ tauri = { version = "2", default-features = false, features = ["wry", "tray-icon
 serde = { version = "1", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = [
+windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
