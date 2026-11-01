@@ -1,0 +1,59 @@
+name: Release
+
+# Create a release by pushing a tag, e.g.:  git tag v1.0.0 && git push origin v1.0.0
+# The workflow builds on a real Windows runner and creates a DRAFT release: review it, then publish.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag must match the app version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $conf = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($tag -ne $pkg -or $tag -ne $conf) { throw "Tag '$tag' does not match package.json '$pkg' / tauri.conf.json '$conf'" }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: cargo test --locked -p nexus-core
+
+      - name: Build installer and exe
+        run: npm run tauri build
+
+      - name: Package and checksums
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          New-Item -ItemType Directory -Force release-files, portable/NEXUS | Out-Null
+          Copy-Item target/release/bundle/nsis/*-setup.exe release-files/
+          Copy-Item target/release/nexus.exe portable/NEXUS/NEXUS.exe
+          Copy-Item README.md, README.ru.md, LICENSE portable/NEXUS/
+          Compress-Archive -Path portable/NEXUS -DestinationPath "release-files/NEXUS-$v-portable-x64.zip"
+          Get-ChildItem release-files -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Out-File release-files/SHA256SUMS.txt -Encoding ascii
+          Get-Content release-files/SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: release-files/*

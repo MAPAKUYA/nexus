@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "NEXUS",
+  "version": "1.0.0",
+  "identifier": "app.nexus.tracker",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "create": false,
+        "title": "NEXUS",
+        "width": 1000,
+        "height": 700,
+        "minWidth": 720,
+        "minHeight": 520,
+        "center": true,
+        "visible": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-networking --disable-component-update --disable-sync --no-pings --disable-domain-reliability",
+        "backgroundColor": "#10131a"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "publisher": "NEXUS",
+    "copyright": "Copyright (c) 2026 NEXUS contributors",
+    "category": "Utility",
+    "shortDescription": "Private, fully local app usage tracker",
+    "longDescription": "NEXUS shows how much time you spend in each application. All data stays on your computer: no internet, no telemetry.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": true,
+        "languages": [
+          "English",
+          "Russian",
+          "Spanish",
+          "German",
+          "French",
+          "PortugueseBR",
+          "SimpChinese",
+          "Japanese"
+        ],
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "installer-hooks.nsh"
+      }
+    }
+  }
+}

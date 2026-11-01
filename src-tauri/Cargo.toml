@@ -1,0 +1,37 @@
+﻿[package]
+name = "nexus"
+version = "1.0.0"
+license = "MIT"
+repository = "https://github.com/MAPAKUYA/nexus"
+authors = ["NEXUS contributors"]
+edition = "2021"
+description = "NEXUS — локальный трекер времени работы с приложениями"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+nexus-core = { path = "../crates/nexus-core" }
+tauri = { version = "2", default-features = false, features = ["wry", "tray-icon", "image-png"] }
+serde = { version = "1", features = ["derive"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Registry",
+    "Win32_System_LibraryLoader",
+    "Win32_System_StationsAndDesktops",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[features]
+# Включается при релизной сборке: UI берётся из встроенных ресурсов, а не с dev-сервера.
+custom-protocol = ["tauri/custom-protocol"]

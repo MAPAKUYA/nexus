@@ -1,0 +1,4 @@
+# Нужно только для кросс-сборки под Windows (GNU) из Linux. На самой Windows (MSVC) не влияет.
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+ar = "x86_64-w64-mingw32-ar"
