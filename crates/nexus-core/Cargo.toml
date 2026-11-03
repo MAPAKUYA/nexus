@@ -1,8 +1,8 @@
-﻿[package]
+[package]
 name = "nexus-core"
-version = "1.0.0"
-license = "MIT"
-authors = ["NEXUS contributors"]
+version = "1.0.1"
+license = "GPL-3.0-only"
+authors = ["MAPAKUYA"]
 edition = "2021"
 description = "NEXUS: платформонезависимое ядро учёта времени и хранилище SQLite"
 

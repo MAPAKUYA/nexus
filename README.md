@@ -1,4 +1,4 @@
-﻿# NEXUS
+# NEXUS
 
 **A private, fully local app-usage tracker for Windows 10/11.**
 See how much time you spend in each application — what was in focus and what was merely running —
@@ -85,5 +85,18 @@ docs/                SECURITY.md, PERFORMANCE.md, TRANSLATIONS.md, TEST-REPORT.m
 Bug reports, translation fixes and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and
 [docs/TRANSLATIONS.md](docs/TRANSLATIONS.md). Security issues: see [SECURITY.md](SECURITY.md).
 
+## Support the author
+NEXUS is free. If it is useful to you, you can support its development — entirely optional, nothing is locked behind it:
+
+- [Boosty](https://boosty.to/matemzaz)
+- [DonationAlerts](https://www.donationalerts.com/r/matem)
+
+(The app itself never opens links or connects to the internet; donations are only possible from this page.)
+
 ## License
-[MIT](LICENSE)
+NEXUS is free software, released under the [GNU General Public License v3.0](LICENSE) (`GPL-3.0-only`).
+Copyright (c) 2026 MAPAKUYA.
+
+You may use, study, change and share it. If you distribute NEXUS (modified or not), you must give the recipients the
+source code under the same license and keep the copyright notices. Version 1.0.0 was published earlier under the MIT
+license; whoever received that version keeps the MIT rights for it.

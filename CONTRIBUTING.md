@@ -18,3 +18,7 @@ CI runs the same checks plus `cargo audit` / `npm audit` and a Windows build.
 - Document every `unsafe` block with a `SAFETY:` comment.
 
 Translations: see [docs/TRANSLATIONS.md](docs/TRANSLATIONS.md).
+
+## License of contributions
+NEXUS is licensed under the GNU GPL v3 (`GPL-3.0-only`). By submitting a pull request you agree that your
+contribution is released under the same license, and that you have the right to do so.

@@ -20,6 +20,18 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Config files must be UTF-8 without BOM
+        shell: bash
+        run: |
+          bad=0
+          for f in package.json tsconfig.json Cargo.toml src-tauri/Cargo.toml src-tauri/tauri.conf.json crates/nexus-core/Cargo.toml; do
+            if [ "$(head -c3 "$f" | od -An -tx1 | tr -d ' \n')" = "efbbbf" ]; then
+              echo "::error file=$f::File has a BOM (Byte Order Mark). Re-save it as UTF-8 without BOM."
+              bad=1
+            fi
+          done
+          exit $bad
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
