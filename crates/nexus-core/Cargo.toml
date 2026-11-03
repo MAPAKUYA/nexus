@@ -7,7 +7,7 @@ edition = "2021"
 description = "NEXUS: платформонезависимое ядро учёта времени и хранилище SQLite"
 
 [dependencies]
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
