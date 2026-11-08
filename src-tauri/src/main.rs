@@ -4,10 +4,12 @@
 mod platform;
 
 use nexus_core::{
-    build_report, is_supported_language, tray_text, Date, Db, Period, Report, Settings, Status, Tracker, TrackerConfig,
+    base64_encode, build_range_report, build_report, display_name, is_supported_language, normalize_exe, tray_text, AppRef, Date, Db, Period, Report,
+    parse_range, Settings, Status, Tracker, TrackerConfig,
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::{HashMap, HashSet},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex, MutexGuard,
@@ -87,9 +89,24 @@ fn finalize_and_flush(state: &AppState) {
 }
 
 #[tauri::command]
-fn report(state: tauri::State<'_, Arc<AppState>>, period: String, anchor: Option<String>) -> Result<Report, String> {
-    let period = Period::parse(&period).ok_or("неизвестный период")?;
+fn report(
+    state: tauri::State<'_, Arc<AppState>>,
+    period: String,
+    anchor: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+) -> Result<Report, String> {
     let today = Date::parse(&platform::local_day()).ok_or("не удалось определить текущую дату")?;
+    if period == "range" {
+        // Произвольный диапазон: обе даты разбираются строго, перепутанные меняются местами.
+        let (from, to) = parse_range(from.as_deref().unwrap_or(""), to.as_deref().unwrap_or(""))
+            .ok_or("некорректный диапазон дат")?;
+        let tracker = lock(&state.tracker);
+        let pending = tracker.pending_all();
+        let db = lock(&state.db);
+        return build_range_report(&db, &pending, from, to, today).map_err(|e| e.to_string());
+    }
+    let period = Period::parse(&period).ok_or("неизвестный период")?;
     let anchor = match anchor {
         Some(a) => Date::parse(&a).ok_or("некорректная дата")?,
         None => today,
@@ -113,6 +130,75 @@ fn clear_statistics(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String
     lock(&state.db).clear_all().map_err(|e| e.to_string())
 }
 
+/// Чёрный список → трекеру. Вызывается под блокировкой трекера и базы (порядок: трекер, затем база).
+fn sync_ignored(tracker: &mut Tracker, db: &Db) -> Result<Vec<AppRef>, String> {
+    let list = db.ignored_apps().map_err(|e| e.to_string())?;
+    tracker.set_ignored(list.iter().map(|a| a.exe.clone()).collect::<HashSet<_>>());
+    Ok(list)
+}
+
+#[tauri::command]
+fn get_ignored(state: tauri::State<'_, Arc<AppState>>) -> Result<Vec<AppRef>, String> {
+    lock(&state.db).ignored_apps().map_err(|e| e.to_string())
+}
+
+/// Иконки приложений как `data:`-адреса PNG. Возвращает только найденные; при выключенной настройке — ничего.
+#[tauri::command]
+fn get_icons(state: tauri::State<'_, Arc<AppState>>, exes: Vec<String>) -> Result<HashMap<String, String>, String> {
+    if !lock(&state.settings).show_icons {
+        return Ok(HashMap::new());
+    }
+    // Данные от интерфейса не доверенные: ограничиваем число запросов и проверяем имена.
+    let wanted: Vec<String> = exes.iter().take(300).filter_map(|e| normalize_exe(e)).collect();
+    let found = lock(&state.db).icons_for(&wanted).map_err(|e| e.to_string())?;
+    Ok(found
+        .into_iter()
+        .map(|(exe, png)| (exe, format!("data:image/png;base64,{}", base64_encode(&png))))
+        .collect())
+}
+
+/// Приложения, которые можно исключить: известные по статистике плюс те, что ещё не сохранены в БД.
+#[tauri::command]
+fn list_known_apps(state: tauri::State<'_, Arc<AppState>>) -> Result<Vec<AppRef>, String> {
+    let tracker = lock(&state.tracker);
+    let db = lock(&state.db);
+    let mut apps = db.known_apps().map_err(|e| e.to_string())?;
+    for exe in tracker.pending_exes() {
+        if !apps.iter().any(|a| a.exe == exe) {
+            apps.push(AppRef { name: display_name(&exe), exe });
+        }
+    }
+    apps.retain(|a| !tracker.is_ignored(&a.exe));
+    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()).then(a.exe.cmp(&b.exe)));
+    Ok(apps)
+}
+
+/// Добавляет приложение в чёрный список и безвозвратно удаляет всю его статистику.
+/// Сначала меняется база: если запись не удалась, учёт остаётся прежним.
+#[tauri::command]
+fn ignore_app(
+    state: tauri::State<'_, Arc<AppState>>,
+    exe: String,
+    name: Option<String>,
+) -> Result<Vec<AppRef>, String> {
+    let exe = normalize_exe(&exe).ok_or("некорректное имя приложения")?;
+    let name: String = name.unwrap_or_default().chars().take(200).collect();
+    let mut tracker = lock(&state.tracker);
+    let mut db = lock(&state.db);
+    db.add_ignored(&exe, &name).map_err(|e| e.to_string())?;
+    sync_ignored(&mut tracker, &db)
+}
+
+/// Убирает приложение из чёрного списка (удалённая статистика не восстанавливается).
+#[tauri::command]
+fn unignore_app(state: tauri::State<'_, Arc<AppState>>, exe: String) -> Result<Vec<AppRef>, String> {
+    let exe = normalize_exe(&exe).ok_or("некорректное имя приложения")?;
+    let mut tracker = lock(&state.tracker);
+    let mut db = lock(&state.db);
+    db.remove_ignored(&exe).map_err(|e| e.to_string())?;
+    sync_ignored(&mut tracker, &db)
+}
+
 /// Настройки для интерфейса: к сохранённым в БД добавлен автозапуск (его источник правды — реестр).
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,7 +206,11 @@ struct SettingsDto {
     idle_minutes: u32,
     close_to_tray: bool,
     count_idle: bool,
+    quick_exclude: bool,
+    show_icons: bool,
+    animations: bool,
     language: String,
+    theme: String,
     autostart: bool,
 }
 
@@ -130,7 +220,11 @@ fn settings_dto(state: &AppState) -> SettingsDto {
         idle_minutes: s.idle_minutes,
         close_to_tray: s.close_to_tray,
         count_idle: s.count_idle,
+        quick_exclude: s.quick_exclude,
+        show_icons: s.show_icons,
+        animations: s.animations,
         language: s.language,
+        theme: s.theme,
         autostart: platform::autostart_enabled(),
     }
 }
@@ -153,7 +247,11 @@ fn save_settings(
         idle_minutes: settings.idle_minutes,
         close_to_tray: settings.close_to_tray,
         count_idle: settings.count_idle,
+        quick_exclude: settings.quick_exclude,
+        show_icons: settings.show_icons,
+        animations: settings.animations,
         language: settings.language,
+        theme: settings.theme,
     }
     .sanitized();
     {
@@ -162,11 +260,21 @@ fn save_settings(
         tracker.set_idle_threshold_ms(new.idle_threshold_ms());
         tracker.set_count_idle(new.count_idle);
     }
-    let language_changed = lock(&state.settings).language != new.language;
+    let (language_changed, theme_changed) = {
+        let old = lock(&state.settings);
+        (old.language != new.language, old.theme != new.theme)
+    };
     let language = new.language.clone();
+    let theme = new.theme.clone();
     *lock(&state.settings) = new;
     if language_changed {
         apply_tray_language(&app, &language);
+    }
+    if theme_changed {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.set_theme(window_theme(&theme));
+            let _ = w.set_background_color(Some(window_background(&theme)));
+        }
     }
     Ok(settings_dto(&state))
 }
@@ -191,13 +299,30 @@ fn spawn_tracker(state: Arc<AppState>) {
                 let step = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let sample = sampler.sample();
                     let now_ms = epoch.elapsed().as_millis() as u64;
-                    lock(&state.tracker).tick(now_ms, &sample);
-                    let (threshold, count_idle) = {
-                        let s = lock(&state.settings);
-                        (s.idle_threshold_ms(), s.count_idle)
+                    // Статус строится из замера без исключённых приложений: «фокус на исключённом» = нет приложения.
+                    let shown = {
+                        let mut tracker = lock(&state.tracker);
+                        tracker.tick(now_ms, &sample);
+                        tracker.visible_sample(&sample)
                     };
-                    *lock(&state.status) = Status::from_sample(&sample, threshold, count_idle);
+                    let (threshold, count_idle, show_icons) = {
+                        let s = lock(&state.settings);
+                        (s.idle_threshold_ms(), s.count_idle, s.show_icons)
+                    };
+                    sampler.set_want_icons(show_icons);
+                    *lock(&state.status) = Status::from_sample(&shown, threshold, count_idle);
+                    for (exe, png) in sampler.take_new_icons() {
+                        if lock(&state.tracker).is_ignored(&exe) {
+                            continue;
+                        }
+                        if let Err(e) = lock(&state.db).set_icon(&exe, &png) {
+                            eprintln!("NEXUS: не удалось сохранить иконку: {e}");
+                        }
+                    }
                     for (exe, name) in sampler.take_new_names() {
+                        if lock(&state.tracker).is_ignored(&exe) {
+                            continue; // об исключённых приложениях в базе не остаётся даже имени
+                        }
                         if let Err(e) = lock(&state.db).set_app_name(&exe, &name) {
                             eprintln!("NEXUS: не удалось сохранить имя приложения: {e}");
                         }
@@ -217,6 +342,30 @@ fn spawn_tracker(state: Arc<AppState>) {
 }
 
 /// Показывает главное окно. Если оно было закрыто ради экономии памяти — создаёт его заново.
+/// Тема рамки окна: при «системной» окно следует Windows само.
+fn window_theme(theme: &str) -> Option<tauri::Theme> {
+    match theme {
+        "light" => Some(tauri::Theme::Light),
+        "dark" => Some(tauri::Theme::Dark),
+        _ => None,
+    }
+}
+
+/// Цвет фона окна до отрисовки страницы: совпадает с фоном выбранной темы, чтобы не было вспышки.
+/// Значения — `--bg` из styles.css.
+fn window_background(theme: &str) -> tauri::window::Color {
+    let light = match theme {
+        "light" => true,
+        "dark" => false,
+        _ => platform::system_prefers_light(),
+    };
+    if light {
+        tauri::window::Color(244, 246, 251, 255)
+    } else {
+        tauri::window::Color(16, 19, 26, 255)
+    }
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(state) = app.try_state::<Arc<AppState>>() {
         state.tray_mode.store(false, Ordering::SeqCst);
@@ -228,7 +377,11 @@ fn show_main(app: &AppHandle) {
         return;
     }
     let Some(cfg) = app.config().app.windows.first().cloned() else { return };
-    match tauri::WebviewWindowBuilder::from_config(app, &cfg).and_then(|b| b.build()) {
+    let theme = app.try_state::<Arc<AppState>>().map(|s| lock(&s.settings).theme.clone()).unwrap_or_default();
+    let built = tauri::WebviewWindowBuilder::from_config(app, &cfg)
+        .map(|b| b.theme(window_theme(&theme)).background_color(window_background(&theme)))
+        .and_then(|b| b.build());
+    match built {
         Ok(w) => {
             let _ = w.show();
             let _ = w.set_focus();
@@ -321,8 +474,12 @@ fn main() {
                 count_idle: settings.count_idle,
                 ..TrackerConfig::default()
             };
+            let mut tracker = Tracker::new(tracker_cfg);
+            if let Ok(list) = db.ignored_apps() {
+                tracker.set_ignored(list.into_iter().map(|a| a.exe).collect());
+            }
             let state = Arc::new(AppState {
-                tracker: Mutex::new(Tracker::new(tracker_cfg)),
+                tracker: Mutex::new(tracker),
                 db: Mutex::new(db),
                 status: Mutex::new(Status::starting()),
                 settings: Mutex::new(settings),
@@ -357,7 +514,19 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![report, current_status, clear_statistics, get_settings, save_settings, take_notice])
+        .invoke_handler(tauri::generate_handler![
+            report,
+            current_status,
+            clear_statistics,
+            get_settings,
+            save_settings,
+            take_notice,
+            get_ignored,
+            list_known_apps,
+            ignore_app,
+            unignore_app,
+            get_icons
+        ])
         .build(tauri::generate_context!())
         .expect("не удалось создать приложение");
 

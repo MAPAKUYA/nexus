@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import { clearStatistics, getSettings, saveSettings, type SettingsData } from "./api";
+import IgnoredApps from "./IgnoredApps";
+import { setMotion } from "./motion";
+import { isThemeSetting, THEMES } from "./theme";
+import { applyTheme } from "./themeApply";
 import { useI18n } from "./i18n/I18nContext";
 import { LANGUAGES, isLang, type Lang } from "./i18n";
 
@@ -28,12 +32,16 @@ export default function SettingsView({ onBack, onLanguage }: Props) {
     const next = { ...settings, ...patch };
     setSettings(next); // сразу показываем выбор, при ошибке откатим
     if (patch.language && isLang(patch.language)) onLanguage(patch.language);
+    if (patch.theme && isThemeSetting(patch.theme)) applyTheme(patch.theme, true);
+    if (patch.animations !== undefined) setMotion(patch.animations);
     try {
       setSettings(await saveSettings(next));
       setError(null);
     } catch (e) {
       setSettings(settings);
       if (patch.language && isLang(settings.language)) onLanguage(settings.language);
+      if (patch.theme && isThemeSetting(settings.theme)) applyTheme(settings.theme);
+      if (patch.animations !== undefined) setMotion(settings.animations);
       setError(String(e));
     }
   };
@@ -86,6 +94,20 @@ export default function SettingsView({ onBack, onLanguage }: Props) {
 
           <label className="setting">
             <span className="setting-text">
+              <span className="setting-name">{t.settings.theme}</span>
+              <span className="setting-hint">{t.settings.themeHint}</span>
+            </span>
+            <select className="select" value={settings.theme} onChange={(e) => void update({ theme: e.target.value })}>
+              {THEMES.map((v) => (
+                <option key={v} value={v}>
+                  {t.settings.themeNames[v]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="setting">
+            <span className="setting-text">
               <span className="setting-name">{t.settings.countIdle}</span>
               <span className="setting-hint">{t.settings.countIdleHint}</span>
             </span>
@@ -131,6 +153,45 @@ export default function SettingsView({ onBack, onLanguage }: Props) {
 
           <label className="setting">
             <span className="setting-text">
+              <span className="setting-name">{t.settings.animations}</span>
+              <span className="setting-hint">{t.settings.animationsHint}</span>
+            </span>
+            <input
+              className="check"
+              type="checkbox"
+              checked={settings.animations}
+              onChange={(e) => void update({ animations: e.target.checked })}
+            />
+          </label>
+
+          <label className="setting">
+            <span className="setting-text">
+              <span className="setting-name">{t.settings.showIcons}</span>
+              <span className="setting-hint">{t.settings.showIconsHint}</span>
+            </span>
+            <input
+              className="check"
+              type="checkbox"
+              checked={settings.showIcons}
+              onChange={(e) => void update({ showIcons: e.target.checked })}
+            />
+          </label>
+
+          <label className="setting">
+            <span className="setting-text">
+              <span className="setting-name">{t.settings.quickExclude}</span>
+              <span className="setting-hint">{t.settings.quickExcludeHint}</span>
+            </span>
+            <input
+              className="check"
+              type="checkbox"
+              checked={settings.quickExclude}
+              onChange={(e) => void update({ quickExclude: e.target.checked })}
+            />
+          </label>
+
+          <label className="setting">
+            <span className="setting-text">
               <span className="setting-name">{t.settings.closeToTray}</span>
               <span className="setting-hint">{t.settings.closeToTrayHint}</span>
             </span>
@@ -143,6 +204,8 @@ export default function SettingsView({ onBack, onLanguage }: Props) {
           </label>
         </div>
       )}
+
+      <IgnoredApps />
 
       <h3 className="section-title">{t.settings.dataTitle}</h3>
       <div className="panel">

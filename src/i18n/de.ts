@@ -2,7 +2,17 @@ import type { Dict } from "./types";
 
 export const de: Dict = {
   units: { h: "Std.", min: "Min.", s: "Sek.", sep: " " },
-  periods: { day: "Tag", week: "Woche", month: "Monat", year: "Jahr", all: "Gesamt" },
+  periods: { day: "Tag", week: "Woche", month: "Monat", year: "Jahr", all: "Gesamt", range: "Zeitraum" },
+  rangePicker: {
+    from: "Von",
+    to: "Bis",
+    last7: "7 Tage",
+    last30: "30 Tage",
+    last90: "90 Tage",
+    presets: "Schnellauswahl (Tage)",
+    thisYear: "Dieses Jahr",
+    tooLong: "Der Zeitraum ist zu lang (höchstens 50 Jahre).",
+  },
   common: {
     today: "Heute",
     prev: "Zurück",
@@ -38,6 +48,8 @@ export const de: Dict = {
     focus: "im Fokus",
     emptyToday: "Noch nichts da. Arbeite eine Minute in einer beliebigen App, dann erscheint sie hier.",
     emptyPeriod: "Für diesen Zeitraum liegen keine Daten vor.",
+    exclude: "Ausschließen",
+    excludeAria: (n) => `${n} von der Erfassung ausschließen`,
     bar: (n, a, r) => `${n}: im Fokus ${a}, gelaufen ${r}`,
   },
   status: {
@@ -53,6 +65,15 @@ export const de: Dict = {
     title: "Einstellungen",
     language: "Sprache",
     languageHint: "Sprache der Oberfläche",
+    theme: "Design",
+    themeHint: "Erscheinungsbild der App",
+    themeNames: { system: "System", light: "Hell", dark: "Dunkel" },
+    quickExclude: "Schaltfläche zum schnellen Ausschließen",
+    quickExcludeHint: "Zeigt bei jeder App in der Liste eine ⊘-Schaltfläche.",
+    showIcons: "App-Symbole anzeigen",
+    showIconsHint: "Zeigt das Symbol jeder App neben ihrem Namen. Die Symbole stammen aus den Programmdateien und werden nur auf diesem Computer gespeichert.",
+    animations: "Animationen",
+    animationsHint: "Weiche Übergänge zwischen Tabs, Ansichten und Designs.",
     countIdle: "Inaktivität mitzählen",
     countIdleHint:
       "Zeit ohne Maus- oder Tastatureingabe (z. B. beim Ansehen eines Videos) zählt ebenfalls als aktiv. Ein gesperrter Bildschirm wird nie gezählt",
@@ -70,5 +91,18 @@ export const de: Dict = {
     confirmDelete: "Gesamte Statistik endgültig löschen?",
     confirmYes: "Ja, löschen",
     deleted: "Statistik gelöscht.",
+  },
+  ignored: {
+    title: "Ausgeschlossene Apps",
+    hint: "Die Zeit in diesen Apps wird überhaupt nicht erfasst.",
+    empty: "Keine ausgeschlossenen Apps.",
+    add: "App hinzufügen…",
+    search: "Apps suchen",
+    noMatches: "Keine Apps gefunden.",
+    remove: "Entfernen",
+    removeAria: (n) => `${n} aus der Liste der ausgeschlossenen Apps entfernen`,
+    confirmTitle: (n) => `${n} ausschließen?`,
+    confirmBody: "Alle bereits erfassten Statistiken dieser App werden dauerhaft gelöscht, und neue Zeit wird nicht mehr erfasst. Wenn Sie die App später aus dieser Liste entfernen, kommen die Daten nicht zurück.",
+    confirmYes: "Ausschließen und Daten löschen",
   },
 };

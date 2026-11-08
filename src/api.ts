@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type Period = "day" | "week" | "month" | "year" | "all";
+export type Period = "day" | "week" | "month" | "year" | "all" | "range";
 
 export interface AppUsage {
   exe: string;
@@ -37,8 +37,8 @@ export interface Status {
 }
 
 /** `anchor` в формате YYYY-MM-DD; без него — текущий период. */
-export function getReport(period: Period, anchor?: string): Promise<Report> {
-  return invoke<Report>("report", { period, anchor: anchor ?? null });
+export function getReport(period: Period, anchor?: string, range?: { from: string; to: string }): Promise<Report> {
+  return invoke<Report>("report", { period, anchor: anchor ?? null, from: range?.from ?? null, to: range?.to ?? null });
 }
 
 export function getStatus(): Promise<Status> {
@@ -56,8 +56,16 @@ export interface SettingsData {
   closeToTray: boolean;
   /** Засчитывать время без ввода как активное (простой не определяется). */
   countIdle: boolean;
+  /** Показывать кнопку «исключить» в списке приложений. */
+  quickExclude: boolean;
+  /** Показывать иконки приложений слева от названия. */
+  showIcons: boolean;
+  /** Плавные анимации интерфейса. */
+  animations: boolean;
   /** Код языка интерфейса (en, ru, …). */
   language: string;
+  /** Тема интерфейса: system | light | dark. */
+  theme: string;
   /** Запуск вместе с Windows (свёрнутым в трей). */
   autostart: boolean;
 }
@@ -78,4 +86,33 @@ export interface Notice {
 
 export function takeNotice(): Promise<Notice | null> {
   return invoke<Notice | null>("take_notice");
+}
+
+/** Приложение в списках настроек: `exe` — имя файла в нижнем регистре, `name` — читаемое имя. */
+export interface AppRef {
+  exe: string;
+  name: string;
+}
+
+export function getIgnored(): Promise<AppRef[]> {
+  return invoke<AppRef[]>("get_ignored");
+}
+
+/** Приложения, которые можно исключить (уже исключённые не возвращаются). */
+export function listKnownApps(): Promise<AppRef[]> {
+  return invoke<AppRef[]>("list_known_apps");
+}
+
+/** Исключает приложение и **безвозвратно удаляет** всю его накопленную статистику. */
+export function ignoreApp(exe: string, name: string): Promise<AppRef[]> {
+  return invoke<AppRef[]>("ignore_app", { exe, name });
+}
+
+export function unignoreApp(exe: string): Promise<AppRef[]> {
+  return invoke<AppRef[]>("unignore_app", { exe });
+}
+
+/** Иконки приложений как `data:image/png;base64,…`; приложения без иконки в ответ не попадают. */
+export function getIcons(exes: string[]): Promise<Record<string, string>> {
+  return invoke<Record<string, string>>("get_icons", { exes });
 }

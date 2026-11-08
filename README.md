@@ -10,8 +10,11 @@ without any account, cloud, telemetry or internet connection.
 - **Two separate clocks per app:** time in focus (you are actually using it) and time the app was running.
 - **Idle and lock detection:** time with no mouse/keyboard input and a locked screen are not counted
   (idle counting can be switched on in Settings, e.g. for watching videos).
-- **Day / Week / Month / Year / All time**, date picker, history by day and by month, activity chart and
+- **Day / Week / Month / Year / All time / Custom range**, date picker, history by day and by month, activity chart and
   a focus-time breakdown by app.
+- **Excluded apps:** pick apps that must not be tracked at all (their already collected statistics are deleted).
+- **Light and dark theme**, or follow Windows; subtle animations (can be turned off).
+- **App icons** next to names (optional, off by default; taken from the program files, stored locally only).
 - **Lives in the tray:** minimizing closes the window and frees its memory; tracking continues.
   Optional autostart (minimized to the tray).
 - **Survives shutdown, sleep and restarts:** data is flushed every 30 s, on exit and when Windows ends the session.

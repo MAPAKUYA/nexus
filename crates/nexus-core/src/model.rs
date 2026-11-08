@@ -25,6 +25,19 @@ pub struct Sample {
     pub locked: bool,
 }
 
+impl Sample {
+    /// Замер без исключённых приложений: их нет ни среди запущенных, ни в фокусе
+    /// (фокус на исключённом приложении означает «нет активного приложения»).
+    pub fn without(&self, ignored: &std::collections::HashSet<String>) -> Sample {
+        let mut s = self.clone();
+        s.running.retain(|e| !ignored.contains(e));
+        if s.foreground.as_deref().is_some_and(|f| ignored.contains(f)) {
+            s.foreground = None;
+        }
+        s
+    }
+}
+
 /// Текущее состояние для индикатора в интерфейсе.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Status {
@@ -65,6 +78,26 @@ pub struct AppUsage {
     pub name: String,
     pub active_ms: u64,
     pub running_ms: u64,
+}
+
+/// Приложение для списков в настройках (исключённые, доступные для исключения).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppRef {
+    pub exe: String,
+    pub name: String,
+}
+
+/// Приводит имя exe от интерфейса к виду, в котором оно хранится (нижний регистр).
+/// Данные из интерфейса не считаются доверенными: пустые строки, пути, управляющие символы
+/// и слишком длинные имена отвергаются.
+pub fn normalize_exe(raw: &str) -> Option<String> {
+    let exe = raw.trim().to_lowercase();
+    let bad = |c: char| c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|');
+    if exe.is_empty() || exe.chars().count() > 260 || exe.chars().any(bad) {
+        return None;
+    }
+    Some(exe)
 }
 
 /// `chrome.exe` -> `Chrome`.
@@ -128,5 +161,21 @@ mod status_tests {
         assert_eq!(Status::from_sample(&sample(70_000, false), 60_000, false).kind, "idle");
         assert_eq!(Status::from_sample(&sample(70_000, false), 60_000, true).kind, "active");
         assert_eq!(Status::from_sample(&sample(0, true), 60_000, true).kind, "locked");
+    }
+}
+
+#[cfg(test)]
+mod exe_tests {
+    use super::*;
+
+    #[test]
+    fn normalize_exe_accepts_names_and_rejects_garbage() {
+        assert_eq!(normalize_exe("  Chrome.EXE ").as_deref(), Some("chrome.exe"));
+        assert_eq!(normalize_exe("Яндекс.exe").as_deref(), Some("яндекс.exe"));
+        for bad in ["", "   ", "a/b.exe", "c:\\x.exe", "a\0.exe", "a\n.exe", "con*.exe", "a|b"] {
+            assert_eq!(normalize_exe(bad), None, "{bad:?}");
+        }
+        assert_eq!(normalize_exe(&"a".repeat(261)), None);
+        assert!(normalize_exe(&"a".repeat(260)).is_some());
     }
 }

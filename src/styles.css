@@ -8,16 +8,78 @@
   --track: #2a3040;
   --accent: #8ea8ff;
   --danger: #ff8f8f;
+  --danger-line: #5a3a3a;
+  --warn: #d9a85c;
+  --warn-dot: #d9a85c;
+  --warn-line: #5a4a2a;
+  --hover: rgba(142, 168, 255, 0.08);
+  --backdrop: rgba(0, 0, 0, 0.55);
+  --share-1: #8ea8ff;
+  --share-2: #5fd0c4;
+  --share-3: #e5b567;
+  --share-4: #d68fb6;
+  --share-5: #a6c97a;
+  --share-other: #4a5268;
   font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Yu Gothic UI", system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.45;
+}
+
+/* Светлая тема: выбрана явно или (атрибута нет) включена светлая тема Windows. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --line: #dde2ee;
+  --text: #1b2030;
+  --muted: #5b6479;
+  --track: #d3d9e8;
+  --accent: #3b5bdb;
+  --danger: #c92a2a;
+  --danger-line: #e5b4b4;
+  --warn: #8a5a00;
+  --warn-dot: #b97a0a;
+  --warn-line: #e6cf9a;
+  --hover: rgba(59, 91, 219, 0.08);
+  --backdrop: rgba(20, 24, 40, 0.35);
+  --share-1: #3b5bdb;
+  --share-2: #0f8f84;
+  --share-3: #b5790d;
+  --share-4: #b04a85;
+  --share-5: #5b8a24;
+  --share-other: #7d869c;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg: #f4f6fb;
+    --surface: #ffffff;
+    --line: #dde2ee;
+    --text: #1b2030;
+    --muted: #5b6479;
+    --track: #d3d9e8;
+    --accent: #3b5bdb;
+    --danger: #c92a2a;
+    --danger-line: #e5b4b4;
+    --warn: #8a5a00;
+    --warn-dot: #b97a0a;
+    --warn-line: #e6cf9a;
+    --hover: rgba(59, 91, 219, 0.08);
+    --backdrop: rgba(20, 24, 40, 0.35);
+    --share-1: #3b5bdb;
+    --share-2: #0f8f84;
+    --share-3: #b5790d;
+    --share-4: #b04a85;
+    --share-5: #5b8a24;
+    --share-other: #7d869c;
+  }
 }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); }
 
-.shell { max-width: 960px; margin: 0 auto; padding: 28px 32px 40px; }
+.shell { max-width: 1000px; margin: 0 auto; padding: 28px 32px 40px; }
 
 .top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .brand { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: 0.14em; }
@@ -44,7 +106,11 @@ body { background: var(--bg); color: var(--text); }
   border-top: 1px solid var(--line);
 }
 .row:last-child { border-bottom: 1px solid var(--line); }
-.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.name-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-exclude { flex: none; font: inherit; font-size: 13px; line-height: 1; color: var(--muted); background: none; border: 0; border-radius: 6px; padding: 3px 5px; cursor: pointer; opacity: 0; }
+.row:hover .row-exclude, .row-exclude:focus-visible { opacity: 1; }
+.row-exclude:hover { color: var(--danger); }
 
 .bar { display: block; height: 10px; }
 .bar-running { display: block; height: 100%; min-width: 4px; background: var(--track); border-radius: 5px; overflow: hidden; transition: width 0.4s ease; }
@@ -57,36 +123,40 @@ body { background: var(--bg); color: var(--text); }
 .empty { color: var(--muted); padding: 24px 0; max-width: 46ch; }
 .error { color: var(--danger); }
 
+.row-icons { grid-template-columns: minmax(136px, 216px) 1fr 128px 128px; }
+
 @media (max-width: 760px) {
   .shell { padding: 20px 16px 32px; }
-  .row { grid-template-columns: 1fr 112px 128px; }
+  .row, .row-icons { grid-template-columns: 1fr 112px 128px; }
   .row-btn { grid-template-columns: 1fr 128px; }
   .bar { grid-column: 1 / -1; grid-row: 2; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .bar-running, .bar-active { transition: none; }
-}
+/* Анимациями управляет только флажок в настройках приложения (не системная настройка Windows). */
+:root[data-motion="off"] .bar-running, :root[data-motion="off"] .bar-active { transition: none; }
 
 /* ——— Этап 2: статус, периоды, история ——— */
 .status { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 14px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .status-active .dot { background: var(--accent); }
-.status-idle .dot, .status-locked .dot { background: #d9a85c; }
+.status-idle .dot, .status-locked .dot { background: var(--warn-dot); }
 .status-active { color: var(--text); }
 
-.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin-top: 22px; }
-.tabs { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
-.tab { font: inherit; color: var(--muted); background: none; border: 0; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 12px; margin-top: 22px; }
+.tabs { position: relative; display: inline-flex; padding: 3px; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.tab { position: relative; z-index: 1; font: inherit; color: var(--muted); background: none; border: 0; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
 .tab:hover { color: var(--text); }
-.tab-on { background: var(--track); color: var(--text); }
+.tab-on { color: var(--text); }
+/* Подсветка выбранной вкладки — отдельный элемент, который переезжает между кнопками (см. Segmented.tsx). */
+.tab-pill { position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 0; background: var(--track); border-radius: 8px; opacity: 0; pointer-events: none; }
+.tab-pill.on { opacity: 1; }
 
-.nav { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.nav { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .range { min-width: 19ch; text-align: center; font-variant-numeric: tabular-nums; }
 .icon-btn { font: inherit; font-size: 18px; line-height: 1; width: 30px; height: 30px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
 .icon-btn:hover:not(:disabled) { border-color: var(--accent); }
 .icon-btn:disabled, .link-btn:disabled { opacity: 0.35; cursor: default; }
-.date-input { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; color-scheme: dark; }
+.date-input { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
 .link-btn { font: inherit; font-size: 14px; color: var(--accent); background: none; border: 0; padding: 4px 6px; cursor: pointer; }
 .link-btn:hover:not(:disabled) { text-decoration: underline; }
 .link-danger { color: var(--muted); }
@@ -102,7 +172,7 @@ body { background: var(--bg); color: var(--text); }
 .confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--text); }
 .btn { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 14px; cursor: pointer; }
 .btn:hover { border-color: var(--accent); }
-.btn-danger { color: var(--danger); border-color: #5a3a3a; }
+.btn-danger { color: var(--danger); border-color: var(--danger-line); }
 .btn-danger:hover { border-color: var(--danger); }
 
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -111,8 +181,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .top-right { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
 
 .share { margin-top: 20px; }
-.share-bar { display: flex; height: 10px; gap: 2px; border-radius: 5px; overflow: hidden; }
-.share-bar span { display: block; min-width: 3px; }
+/* Шесть постоянных сегментов (пять приложений и «остальные»); промежутки — просечки цвета карточки,
+   чтобы нулевой по ширине сегмент не оставлял зазора. */
+.share-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--track); }
+.share-bar span { display: block; flex: 0 1 auto; box-shadow: inset -2px 0 0 var(--surface); }
 .share-legend { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; color: var(--muted); }
 .share-legend li { display: inline-flex; align-items: center; gap: 7px; }
 .share-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
@@ -125,7 +197,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .chart-plot { display: grid; gap: 4px; height: 150px; align-items: stretch;
   background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% 50%; background-repeat: repeat-y; border-bottom: 1px solid var(--line); }
 .chart-col { display: flex; align-items: flex-end; justify-content: center; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 4px; min-width: 0; }
-.chart-col:hover { background: rgba(142, 168, 255, 0.08); }
+.chart-col:hover { background: var(--hover); }
 .chart-bar { display: block; width: 100%; max-width: 44px; background: var(--accent); border-radius: 4px 4px 0 0; transition: height 0.4s ease; }
 .chart-bar-empty { height: 2px; background: var(--track); }
 .chart-axis { display: grid; gap: 4px; margin-top: 6px; font-size: 11px; color: var(--muted); text-align: center; }
@@ -146,7 +218,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .setting-text { display: flex; flex-direction: column; gap: 2px; }
 .setting-name { font-weight: 500; }
 .setting-hint { color: var(--muted); font-size: 13px; max-width: 52ch; }
-.select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color-scheme: dark; }
+.select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
 .check { width: 18px; height: 18px; accent-color: var(--accent); flex: none; cursor: pointer; }
 .note { color: var(--muted); font-size: 13px; margin: 14px 0; }
 .note code { color: var(--text); font-size: 12px; }
@@ -162,4 +234,74 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
 .setting-off .setting-name, .setting-off .setting-hint { opacity: 0.5; }
 .select:disabled { opacity: 0.5; cursor: default; }
-.notice { margin: 16px 0 0; padding: 10px 14px; background: var(--surface); border: 1px solid #5a4a2a; border-radius: 10px; color: #d9a85c; font-size: 14px; }
+.notice { margin: 16px 0 0; padding: 10px 14px; background: var(--surface); border: 1px solid var(--warn-line); border-radius: 10px; color: var(--warn); font-size: 14px; }
+
+/* Исключённые приложения и окно подтверждения */
+.ignored-list { list-style: none; margin: 0; padding: 0; }
+.ignored-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); }
+.ignored-text { display: flex; flex-direction: column; min-width: 0; }
+.ignored-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ignored-exe { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-actions { padding: 14px 0 16px; }
+.picker { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 0 14px; }
+.input { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+.picker-list { list-style: none; margin: 0; padding: 0; width: 100%; max-height: 240px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.picker-item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; min-width: 0; font: inherit; color: var(--text); text-align: left; background: none; border: 0; padding: 8px 12px; cursor: pointer; }
+.picker-item:hover, .picker-item:focus-visible { background: var(--track); }
+.modal-backdrop { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--backdrop); }
+.modal { width: min(440px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
+.modal-title { margin: 0; font-size: 17px; }
+.modal-exe { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+.modal-body { margin: 14px 0; line-height: 1.5; }
+.modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Произвольный диапазон дат */
+.range-controls { flex-wrap: wrap; gap: 10px 14px; }
+.range-field { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+
+/* Иконки приложений (настройка «Показывать иконки») */
+.app-icon { flex: none; width: 20px; height: 20px; border-radius: 4px; object-fit: contain; }
+.app-icon-empty { background: var(--track); opacity: 0.45; border-radius: 6px; }
+
+/* ——— Анимации ———
+   Включаются только при data-motion="on" (настройка «Анимации»); системная настройка Windows
+   «Показывать анимацию» не учитывается. Ничего не анимируется постоянно: только ответ на действие
+   или смену данных. */
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes pop-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.97); } }
+
+:root[data-motion="on"] { --ease: cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* вкладки периода и блок 7 | 30 | 90 */
+:root[data-motion="on"] .tab { transition: color 0.22s var(--ease); }
+:root[data-motion="on"] .tab-pill { transition: opacity 0.2s var(--ease); }
+:root[data-motion="on"] .tab-pill.ready { transition: transform 0.24s var(--ease), width 0.24s var(--ease), opacity 0.2s var(--ease); }
+
+/* полоса распределения: сегменты плавно растут и сужаются */
+:root[data-motion="on"] .share-bar span { transition: width 0.5s var(--ease), min-width 0.5s var(--ease); }
+
+/* точка статуса, кнопка «исключить», иконки */
+:root[data-motion="on"] .dot { transition: background-color 0.3s var(--ease); }
+:root[data-motion="on"] .row-exclude { transition: opacity 0.15s var(--ease), color 0.15s var(--ease); }
+:root[data-motion="on"] .app-icon-in { animation: fade-in 0.15s var(--ease) both; }
+
+/* переход между «Статистикой» и «Настройками» (только после действия пользователя) */
+:root[data-motion="on"] .view-fade { animation: view-in 0.18s var(--ease) both; }
+
+/* окно подтверждения (LEAVE_MS в motion.ts = 160 мс) */
+:root[data-motion="on"] .modal-backdrop { animation: fade-in 0.16s var(--ease) both; }
+:root[data-motion="on"] .modal { animation: pop-in 0.16s var(--ease) both; }
+:root[data-motion="on"] .modal-backdrop.modal-leaving { animation: fade-out 0.16s var(--ease) both; }
+:root[data-motion="on"] .modal-backdrop.modal-leaving .modal { animation: pop-out 0.16s var(--ease) both; }
+
+/* смена темы пользователем: цвета перетекают (класс ставится на 350 мс из theme.ts) */
+:root[data-motion="on"].theme-fade,
+:root[data-motion="on"].theme-fade *,
+:root[data-motion="on"].theme-fade *::before,
+:root[data-motion="on"].theme-fade *::after {
+  transition: background-color 0.22s ease, color 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease !important;
+}

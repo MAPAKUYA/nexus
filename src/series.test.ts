@@ -46,3 +46,26 @@ test("empty / day / garbage give no series", () => {
   assert.deepEqual(buildSeries("week", "x", "y", [], "en"), []);
   assert.deepEqual(buildSeries("year", "bad", "bad", [], "en"), []);
 });
+
+test("range: short range is daily with zeros, long range is monthly", () => {
+  const daily = buildSeries("range", "2026-10-28", "2026-11-03", [{ key: "2026-10-30", activeMs: 5 }], "en", "day");
+  assert.equal(daily.length, 7);
+  assert.deepEqual(daily.map((p) => p.activeMs), [0, 0, 5, 0, 0, 0, 0]);
+  assert.ok(daily.every((p) => p.showLabel), "до 14 дней подписаны все дни");
+
+  const monthly = buildSeries("range", "2025-03-04", "2026-11-04", [{ key: "2025-05", activeMs: 9 }], "en", "month");
+  assert.equal(monthly.length, 21, "март 2025 … ноябрь 2026");
+  assert.equal(monthly[0].key, "2025-03");
+  assert.equal(monthly[20].key, "2026-11");
+  assert.equal(monthly.find((p) => p.key === "2025-05")?.activeMs, 9);
+
+  const empty = buildSeries("range", "2025-03-04", "2026-11-04", [], "en", "month");
+  assert.equal(empty.length, 21, "пустой длинный диапазон всё равно месячный");
+});
+
+test("range: very long monthly series labels only some years", () => {
+  const pts = buildSeries("range", "2000-01-01", "2049-12-31", [], "en", "month");
+  assert.equal(pts.length, 600);
+  const shown = pts.filter((p) => p.showLabel);
+  assert.ok(shown.length > 1 && shown.length < 20, `показано подписей: ${shown.length}`);
+});

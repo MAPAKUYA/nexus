@@ -33,13 +33,53 @@ pub struct Report {
 }
 
 /// Собирает отчёт за период: данные из БД плюс ещё не сброшенное из памяти.
+/// Самый длинный допустимый произвольный диапазон — около 50 лет (ряд для графика остаётся небольшим).
+pub const MAX_RANGE_DAYS: i64 = 18_300;
+/// До этой длины (в днях) диапазон показывается по дням, дальше — по месяцам.
+pub const DAILY_MAX_RANGE_DAYS: i64 = 92;
+
 pub fn build_report(db: &Db, pending: &[PendingRow], period: Period, anchor: Date, today: Date) -> Result<Report> {
     let (from, to) = period.range(anchor);
     let monthly = matches!(period, Period::Year | Period::All);
+    let today_s = today.to_string();
+    let is_current = period == Period::All || (from.as_str() <= today_s.as_str() && today_s.as_str() <= to.as_str());
+    let prev = period.shift(anchor, -1).map(|d| d.to_string());
+    let next = period.shift(anchor, 1).filter(|d| period.range(*d).0 <= today_s).map(|d| d.to_string());
+    assemble(db, pending, period.as_str(), from, to, monthly, anchor.to_string(), prev, next, is_current)
+}
 
+/// Разбор произвольного диапазона от интерфейса. Обе даты — настоящие (`YYYY-MM-DD`); если они
+/// перепутаны, меняются местами; длиннее [`MAX_RANGE_DAYS`] — отказ.
+pub fn parse_range(from: &str, to: &str) -> Option<(Date, Date)> {
+    let (a, b) = (Date::parse(from)?, Date::parse(to)?);
+    let (from, to) = if a.days_until(b) < 0 { (b, a) } else { (a, b) };
+    (from.days_until(to) < MAX_RANGE_DAYS).then_some((from, to))
+}
+
+/// Отчёт за произвольный диапазон дат (обе границы включительно). Стрелок «назад/вперёд» нет.
+pub fn build_range_report(db: &Db, pending: &[PendingRow], from: Date, to: Date, today: Date) -> Result<Report> {
+    let monthly = from.days_until(to) + 1 > DAILY_MAX_RANGE_DAYS;
+    let today_s = today.to_string();
+    let (f, t) = (from.to_string(), to.to_string());
+    let is_current = f <= today_s && today_s <= t;
+    assemble(db, pending, "range", f, t, monthly, from.to_string(), None, None, is_current)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn assemble(
+    db: &Db,
+    pending: &[PendingRow],
+    label: &'static str,
+    from: String,
+    to: String,
+    monthly: bool,
+    anchor: String,
+    prev: Option<String>,
+    next: Option<String>,
+    is_current: bool,
+) -> Result<Report> {
     let in_range: Vec<&PendingRow> = pending.iter().filter(|r| r.day >= from && r.day <= to).collect();
 
-    // Приложения
     let mut by_exe: HashMap<&str, Delta> = HashMap::new();
     for r in &in_range {
         let e = by_exe.entry(r.exe.as_str()).or_default();
@@ -49,7 +89,6 @@ pub fn build_report(db: &Db, pending: &[PendingRow], period: Period, anchor: Dat
     let pend_list: Vec<(String, Delta)> = by_exe.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
     let apps = merge_pending(db.apps_in_range(&from, &to)?, &pend_list, &db.app_names()?);
 
-    // История
     let mut map: BTreeMap<String, u64> = db.buckets_in_range(&from, &to, monthly)?.into_iter().collect();
     for r in &in_range {
         let key = if monthly { r.day.get(..7).unwrap_or(&r.day) } else { r.day.as_str() };
@@ -62,20 +101,12 @@ pub fn build_report(db: &Db, pending: &[PendingRow], period: Period, anchor: Dat
         .map(|(key, active_ms)| Bucket { key, active_ms })
         .collect();
 
-    let is_current = period == Period::All || (from.as_str() <= today.to_string().as_str() && today.to_string().as_str() <= to.as_str());
-    let prev = period.shift(anchor, -1).map(|d| d.to_string());
-    let today_s = today.to_string();
-    let next = period
-        .shift(anchor, 1)
-        .filter(|d| period.range(*d).0 <= today_s)
-        .map(|d| d.to_string());
-
     Ok(Report {
-        period: period.as_str(),
+        period: label,
         total_active_ms: apps.iter().map(|a| a.active_ms).sum(),
         from,
         to,
-        anchor: anchor.to_string(),
+        anchor,
         prev,
         next,
         is_current,
@@ -208,5 +239,66 @@ mod tests {
         let r = build_report(&db, &pending, Period::Day, d("2026-10-30"), d("2026-10-30")).unwrap();
         assert_eq!(r.apps.iter().find(|a| a.exe == "new.exe").unwrap().name, "Новая программа");
         assert_eq!(r.apps.iter().find(|a| a.exe == "other.exe").unwrap().name, "Other");
+    }
+    #[test]
+    fn range_matches_sum_of_days_and_covers_boundaries() {
+        let db = seeded();
+        let r = build_range_report(&db, &[], d("2026-10-25"), d("2026-10-30"), d("2026-10-30")).unwrap();
+        assert_eq!((r.period, r.from.as_str(), r.to.as_str(), r.granularity), ("range", "2026-10-25", "2026-10-30", "day"));
+        assert_eq!(r.total_active_ms, 1_000 + 2_000 + 3_000 + 4_000, "обе границы включены");
+        assert!(r.prev.is_none() && r.next.is_none());
+        assert!(r.is_current);
+        // сумма диапазона = сумма недели + воскресенья перед ней
+        let week = build_report(&db, &[], Period::Week, d("2026-10-26"), d("2026-10-30")).unwrap();
+        assert_eq!(r.total_active_ms, week.total_active_ms + 1_000);
+        let one = build_range_report(&db, &[], d("2026-10-26"), d("2026-10-26"), d("2026-10-30")).unwrap();
+        assert_eq!(one.total_active_ms, 5_000);
+    }
+
+    #[test]
+    fn range_merges_pending_and_excludes_outside_days() {
+        let db = seeded();
+        let pend = [row("2026-10-30", "a.exe", 500, 500), row("2026-11-02", "a.exe", 9_999, 9_999)];
+        let r = build_range_report(&db, &pend, d("2026-10-26"), d("2026-10-31"), d("2026-11-02")).unwrap();
+        assert_eq!(r.total_active_ms, 2_000 + 3_000 + 4_000 + 500);
+        assert!(!r.is_current, "сегодня вне диапазона");
+    }
+
+    #[test]
+    fn long_range_is_monthly_and_short_is_daily() {
+        let db = seeded();
+        let daily = build_range_report(&db, &[], d("2026-07-01"), d("2026-10-01"), d("2026-10-30")).unwrap(); // 93 дня
+        assert_eq!(daily.granularity, "month");
+        let edge = build_range_report(&db, &[], d("2026-07-01"), d("2026-09-30"), d("2026-10-30")).unwrap(); // 92 дня
+        assert_eq!(edge.granularity, "day");
+        assert_eq!(edge.buckets.iter().map(|b| b.active_ms).sum::<u64>(), 10_000);
+        let long = build_range_report(&db, &[], d("2025-03-04"), d("2026-11-04"), d("2026-11-04")).unwrap();
+        assert_eq!(long.granularity, "month");
+        assert_eq!(long.total_active_ms, 1_000 + 2_000 + 3_000 + 4_000 + 10_000 + 7_000);
+        assert!(long.buckets.iter().any(|b| b.key == "2025-05"));
+    }
+
+    #[test]
+    fn parse_range_validates_swaps_and_limits() {
+        assert_eq!(parse_range("2026-01-01", "2026-01-31"), Some((d("2026-01-01"), d("2026-01-31"))));
+        assert_eq!(parse_range("2026-01-31", "2026-01-01"), Some((d("2026-01-01"), d("2026-01-31"))), "перевёрнутые даты");
+        assert_eq!(parse_range("2026-03-04", "2026-03-04"), Some((d("2026-03-04"), d("2026-03-04"))));
+        for (a, b) in [("2026-02-30", "2026-03-01"), ("2026-1-1", "2026-03-01"), ("", ""), ("2026-01-01", "x"), ("2026-13-01", "2026-12-01")] {
+            assert_eq!(parse_range(a, b), None, "{a} {b}");
+        }
+        assert!(parse_range("1900-01-01", "2026-01-01").is_none(), "больше 50 лет");
+        assert!(parse_range("2026-01-01", "2077-01-01").is_none());
+        assert!(parse_range("2026-01-01", "2075-12-31").is_some());
+    }
+
+    #[test]
+    fn range_over_leap_day() {
+        let mut db = Db::open_in_memory().unwrap();
+        db.flush(&[row("2024-02-29", "a.exe", 1_000, 1_000), row("2024-03-01", "a.exe", 2_000, 2_000)]).unwrap();
+        let r = build_range_report(&db, &[], d("2024-02-28"), d("2024-02-29"), d("2026-01-01")).unwrap();
+        assert_eq!(r.total_active_ms, 1_000);
+        let r = build_range_report(&db, &[], d("2024-02-29"), d("2024-03-01"), d("2026-01-01")).unwrap();
+        assert_eq!(r.total_active_ms, 3_000);
+        assert_eq!(parse_range("2023-03-01", "2024-02-29"), Some((d("2023-03-01"), d("2024-02-29"))));
     }
 }

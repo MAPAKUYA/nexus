@@ -2,7 +2,17 @@ import type { Dict } from "./types";
 
 export const pt: Dict = {
   units: { h: "h", min: "min", s: "s", sep: " " },
-  periods: { day: "Dia", week: "Semana", month: "Mês", year: "Ano", all: "Tudo" },
+  periods: { day: "Dia", week: "Semana", month: "Mês", year: "Ano", all: "Tudo", range: "Intervalo" },
+  rangePicker: {
+    from: "De",
+    to: "Até",
+    last7: "7 dias",
+    last30: "30 dias",
+    last90: "90 dias",
+    presets: "Seleção rápida (dias)",
+    thisYear: "Este ano",
+    tooLong: "O intervalo é muito longo (máximo de 50 anos).",
+  },
   common: {
     today: "Hoje",
     prev: "Anterior",
@@ -38,6 +48,8 @@ export const pt: Dict = {
     focus: "em foco",
     emptyToday: "Ainda não há nada. Trabalhe um minuto em qualquer aplicativo e ele aparecerá aqui.",
     emptyPeriod: "Não há dados para este período.",
+    exclude: "Excluir",
+    excludeAria: (n) => `Excluir ${n} do acompanhamento`,
     bar: (n, a, r) => `${n}: em foco ${a}, em execução ${r}`,
   },
   status: {
@@ -53,6 +65,15 @@ export const pt: Dict = {
     title: "Configurações",
     language: "Idioma",
     languageHint: "Idioma da interface",
+    theme: "Tema",
+    themeHint: "Aparência do aplicativo",
+    themeNames: { system: "Do sistema", light: "Claro", dark: "Escuro" },
+    quickExclude: "Botão de exclusão rápida",
+    quickExcludeHint: "Mostra um botão ⊘ em cada aplicativo da lista.",
+    showIcons: "Mostrar ícones dos aplicativos",
+    showIconsHint: "Mostra o ícone de cada aplicativo ao lado do nome. Os ícones vêm dos arquivos do programa e ficam guardados apenas neste computador.",
+    animations: "Animações",
+    animationsHint: "Transições suaves entre abas, telas e temas.",
     countIdle: "Contar o tempo inativo",
     countIdleHint:
       "O tempo sem mouse ou teclado (por exemplo, assistindo a um vídeo) também conta como ativo. A tela bloqueada nunca é contada",
@@ -70,5 +91,18 @@ export const pt: Dict = {
     confirmDelete: "Excluir todas as estatísticas permanentemente?",
     confirmYes: "Sim, excluir",
     deleted: "Estatísticas excluídas.",
+  },
+  ignored: {
+    title: "Aplicativos excluídos",
+    hint: "O tempo nesses aplicativos não é registrado de forma alguma.",
+    empty: "Nenhum aplicativo excluído.",
+    add: "Adicionar aplicativo…",
+    search: "Pesquisar aplicativos",
+    noMatches: "Nenhum aplicativo encontrado.",
+    remove: "Remover",
+    removeAria: (n) => `Remover ${n} da lista de excluídos`,
+    confirmTitle: (n) => `Excluir ${n}?`,
+    confirmBody: "Todas as estatísticas já coletadas deste aplicativo serão apagadas permanentemente e nenhum tempo novo será registrado. Se você remover o aplicativo desta lista depois, os dados não voltarão.",
+    confirmYes: "Excluir e apagar dados",
   },
 };

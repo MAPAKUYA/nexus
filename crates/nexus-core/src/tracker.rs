@@ -34,16 +34,25 @@ pub struct Tracker {
     cfg: TrackerConfig,
     acc: HashMap<Key, Delta>,
     tentative: HashMap<Key, u64>,
+    /// Исключённые приложения (чёрный список): их время не считается вообще.
+    ignored: HashSet<String>,
 }
 
 impl Tracker {
     pub fn new(cfg: TrackerConfig) -> Self {
-        Self { last_tick: None, cfg, acc: HashMap::new(), tentative: HashMap::new() }
+        Self { last_tick: None, cfg, acc: HashMap::new(), tentative: HashMap::new(), ignored: HashSet::new() }
     }
 
     /// Обрабатывает замер. `now_ms` — монотонное время в мс. Интервал с предыдущего замера
     /// относится к состоянию, зафиксированному в `sample`. Возвращает засчитанные мс.
     pub fn tick(&mut self, now_ms: u64, sample: &Sample) -> u64 {
+        let filtered;
+        let sample = if self.ignored.is_empty() {
+            sample
+        } else {
+            filtered = sample.without(&self.ignored);
+            &filtered
+        };
         let Some(prev) = self.last_tick.replace(now_ms) else { return 0 };
         if now_ms <= prev {
             return 0;
@@ -109,6 +118,30 @@ impl Tracker {
         if count_idle {
             self.commit_tentative();
         }
+    }
+
+    /// Задаёт чёрный список (имена exe в нижнем регистре). Всё, что по этим приложениям уже
+    /// накоплено в памяти (в том числе отложенное время), немедленно отбрасывается.
+    pub fn set_ignored(&mut self, ignored: HashSet<String>) {
+        self.acc.retain(|(_, exe), _| !ignored.contains(exe));
+        self.tentative.retain(|(_, exe), _| !ignored.contains(exe));
+        self.ignored = ignored;
+    }
+
+    pub fn is_ignored(&self, exe: &str) -> bool {
+        self.ignored.contains(exe)
+    }
+
+    /// Замер так, как его видит учёт: без исключённых приложений. Нужен и для статуса в интерфейсе.
+    pub fn visible_sample(&self, sample: &Sample) -> Sample {
+        sample.without(&self.ignored)
+    }
+
+    /// Имена exe, по которым есть несохранённое время (для списка «доступных для исключения»).
+    pub fn pending_exes(&self) -> Vec<String> {
+        let mut set: HashSet<&String> = self.acc.keys().map(|(_, e)| e).collect();
+        set.extend(self.tentative.keys().map(|(_, e)| e));
+        set.into_iter().cloned().collect()
     }
 
     /// Забывает предыдущий замер, не теряя накопленное.
@@ -422,5 +455,71 @@ mod tests {
         t.set_count_idle(false);
         t.tick(3_000, &s("d", Some("a.exe"), &["a.exe"], 500_000, false));
         assert_eq!(total(&t, "d", "a.exe").active_ms, 1_000, "после выключения — снова простой");
+    }
+    fn set(items: &[&str]) -> HashSet<String> {
+        items.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn ignored_app_is_never_counted_neither_running_nor_active() {
+        let mut t = tracker();
+        t.set_ignored(set(&["secret.exe"]));
+        let smp = s("d", Some("secret.exe"), &["secret.exe", "b.exe"], 0, false);
+        t.tick(0, &smp);
+        for i in 1..=10 {
+            t.tick(i * 1_000, &smp);
+        }
+        assert_eq!(total(&t, "d", "secret.exe"), Delta::default());
+        assert_eq!(total(&t, "d", "b.exe"), Delta { active_ms: 0, running_ms: 10_000 });
+        assert!(t.pending_all().iter().all(|r| r.exe != "secret.exe"));
+    }
+
+    #[test]
+    fn focus_on_ignored_app_credits_nobody() {
+        let mut t = tracker();
+        t.set_ignored(set(&["secret.exe"]));
+        let smp = s("d", Some("secret.exe"), &["secret.exe", "b.exe"], 0, false);
+        t.tick(0, &smp);
+        t.tick(1_000, &smp);
+        assert_eq!(total(&t, "d", "b.exe").active_ms, 0, "фокус на исключённом не засчитывается соседу");
+    }
+
+    #[test]
+    fn adding_to_blacklist_drops_pending_and_tentative_time() {
+        let mut t = tracker();
+        t.tick(0, &present("a.exe"));
+        t.tick(1_000, &present("a.exe"));
+        // отложенное время: тишина дольше интервала, но меньше порога
+        t.tick(2_000, &s("d", Some("a.exe"), &["a.exe"], 30_000, false));
+        assert!(total(&t, "d", "a.exe").running_ms > 0);
+        assert!(t.pending_exes().contains(&"a.exe".to_string()));
+        t.set_ignored(set(&["a.exe"]));
+        assert_eq!(total(&t, "d", "a.exe"), Delta::default());
+        assert!(!t.pending_exes().contains(&"a.exe".to_string()));
+        t.finalize();
+        assert!(t.take_pending().is_empty(), "отложенное время не должно воскреснуть при finalize");
+    }
+
+    #[test]
+    fn removing_from_blacklist_resumes_counting_without_old_data() {
+        let mut t = tracker();
+        t.set_ignored(set(&["a.exe"]));
+        t.tick(0, &present("a.exe"));
+        t.tick(1_000, &present("a.exe"));
+        assert_eq!(total(&t, "d", "a.exe"), Delta::default());
+        t.set_ignored(HashSet::new());
+        t.tick(2_000, &present("a.exe"));
+        t.tick(3_000, &present("a.exe"));
+        assert_eq!(total(&t, "d", "a.exe"), Delta { active_ms: 2_000, running_ms: 2_000 });
+    }
+
+    #[test]
+    fn visible_sample_hides_ignored_for_status() {
+        let mut t = tracker();
+        t.set_ignored(set(&["a.exe"]));
+        let v = t.visible_sample(&present("a.exe"));
+        assert_eq!(v.foreground, None);
+        assert!(v.running.is_empty());
+        assert!(t.is_ignored("a.exe") && !t.is_ignored("b.exe"));
     }
 }

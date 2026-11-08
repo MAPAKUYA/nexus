@@ -2,7 +2,17 @@ import type { Dict } from "./types";
 
 export const es: Dict = {
   units: { h: "h", min: "min", s: "s", sep: " " },
-  periods: { day: "Día", week: "Semana", month: "Mes", year: "Año", all: "Todo" },
+  periods: { day: "Día", week: "Semana", month: "Mes", year: "Año", all: "Todo", range: "Rango" },
+  rangePicker: {
+    from: "Desde",
+    to: "Hasta",
+    last7: "7 días",
+    last30: "30 días",
+    last90: "90 días",
+    presets: "Rango rápido (días)",
+    thisYear: "Este año",
+    tooLong: "El rango es demasiado largo (máximo 50 años).",
+  },
   common: {
     today: "Hoy",
     prev: "Anterior",
@@ -38,6 +48,8 @@ export const es: Dict = {
     focus: "en primer plano",
     emptyToday: "Aún no hay nada. Trabaja un minuto en cualquier aplicación y aparecerá aquí.",
     emptyPeriod: "No hay datos para este periodo.",
+    exclude: "Excluir",
+    excludeAria: (n) => `Excluir ${n} del seguimiento`,
     bar: (n, a, r) => `${n}: en primer plano ${a}, en ejecución ${r}`,
   },
   status: {
@@ -53,6 +65,15 @@ export const es: Dict = {
     title: "Ajustes",
     language: "Idioma",
     languageHint: "Idioma de la interfaz",
+    theme: "Tema",
+    themeHint: "Aspecto de la aplicación",
+    themeNames: { system: "Del sistema", light: "Claro", dark: "Oscuro" },
+    quickExclude: "Botón de exclusión rápida",
+    quickExcludeHint: "Muestra un botón ⊘ en cada aplicación de la lista.",
+    showIcons: "Mostrar iconos de aplicaciones",
+    showIconsHint: "Muestra el icono de cada aplicación junto a su nombre. Los iconos se toman de los archivos del programa y se guardan solo en este equipo.",
+    animations: "Animaciones",
+    animationsHint: "Transiciones suaves entre pestañas, pantallas y temas.",
     countIdle: "Contar el tiempo de inactividad",
     countIdleHint:
       "El tiempo sin usar el ratón ni el teclado (por ejemplo, viendo un vídeo) también cuenta como activo. La pantalla bloqueada nunca se cuenta",
@@ -70,5 +91,18 @@ export const es: Dict = {
     confirmDelete: "¿Eliminar todas las estadísticas de forma permanente?",
     confirmYes: "Sí, eliminar",
     deleted: "Estadísticas eliminadas.",
+  },
+  ignored: {
+    title: "Aplicaciones excluidas",
+    hint: "El tiempo en estas aplicaciones no se registra en absoluto.",
+    empty: "No hay aplicaciones excluidas.",
+    add: "Añadir aplicación…",
+    search: "Buscar aplicaciones",
+    noMatches: "No se encontraron aplicaciones.",
+    remove: "Quitar",
+    removeAria: (n) => `Quitar ${n} de la lista de excluidas`,
+    confirmTitle: (n) => `¿Excluir ${n}?`,
+    confirmBody: "Se eliminarán de forma permanente todas las estadísticas ya recopiladas de esta aplicación y no se registrará tiempo nuevo. Si más tarde la quitas de esta lista, los datos no se recuperarán.",
+    confirmYes: "Excluir y eliminar datos",
   },
 };

@@ -83,6 +83,11 @@ impl Date {
         (MIN_YEAR..=MAX_YEAR).contains(&r.y).then_some(r)
     }
 
+    /// Число дней от `self` до `other` (отрицательное, если `other` раньше).
+    pub fn days_until(self, other: Date) -> i64 {
+        other.to_days() - self.to_days()
+    }
+
     /// Понедельник = 0 … воскресенье = 6.
     pub fn weekday_mon0(self) -> u32 {
         // 1970-01-01 — четверг (индекс 3).

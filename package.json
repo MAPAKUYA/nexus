@@ -1,7 +1,7 @@
 {
   "name": "nexus",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.1.0",
   "license": "GPL-3.0-only",
   "repository": "github:MAPAKUYA/nexus",
   "type": "module",
@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/format.test.ts src/series.test.ts src/shares.test.ts src/i18n/i18n.test.ts",
+    "test": "node --experimental-strip-types --test src/format.test.ts src/series.test.ts src/shares.test.ts src/theme.test.ts src/range.test.ts src/i18n/i18n.test.ts",
     "tauri": "tauri"
   },
   "dependencies": {

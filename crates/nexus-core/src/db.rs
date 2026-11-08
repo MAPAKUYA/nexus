@@ -1,4 +1,5 @@
-use crate::model::{display_name, AppUsage, PendingRow};
+use crate::icon::looks_like_png;
+use crate::model::{display_name, AppRef, AppUsage, PendingRow};
 use rusqlite::{params, Connection};
 use std::{
     collections::HashMap,
@@ -7,7 +8,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
 
 #[derive(Debug)]
 pub enum Error {
@@ -123,6 +124,22 @@ impl Db {
                      value TEXT NOT NULL
                  ) WITHOUT ROWID;
                  PRAGMA user_version = 2;
+                 COMMIT;",
+            )?;
+        }
+        if version < 3 {
+            // Чёрный список приложений и (на будущее) их иконки. Обе таблицы создаются одной миграцией.
+            conn.execute_batch(
+                "BEGIN;
+                 CREATE TABLE ignored_apps (
+                     exe  TEXT PRIMARY KEY,
+                     name TEXT NOT NULL
+                 ) WITHOUT ROWID;
+                 CREATE TABLE app_icons (
+                     exe TEXT PRIMARY KEY,
+                     png BLOB NOT NULL
+                 ) WITHOUT ROWID;
+                 PRAGMA user_version = 3;
                  COMMIT;",
             )?;
         }
@@ -261,11 +278,84 @@ impl Db {
         Ok(())
     }
 
+    /// Сохраняет иконку приложения (PNG), заменяя прежнюю. Данные, не похожие на PNG, отвергаются.
+    /// Иконки исключённых приложений не сохраняются.
+    pub fn set_icon(&mut self, exe: &str, png: &[u8]) -> Result<bool> {
+        if !looks_like_png(png) {
+            return Ok(false);
+        }
+        let ignored: bool = self
+            .conn
+            .query_row("SELECT EXISTS(SELECT 1 FROM ignored_apps WHERE exe = ?1)", [exe], |r| r.get(0))?;
+        if ignored {
+            return Ok(false);
+        }
+        self.conn.execute("INSERT OR REPLACE INTO app_icons (exe, png) VALUES (?1, ?2)", params![exe, png])?;
+        Ok(true)
+    }
+
+    /// Иконки для перечисленных приложений: `(exe, PNG)`. Приложения без иконки в ответ не попадают.
+    pub fn icons_for(&self, exes: &[String]) -> Result<Vec<(String, Vec<u8>)>> {
+        let mut stmt = self.conn.prepare_cached("SELECT png FROM app_icons WHERE exe = ?1")?;
+        let mut out = Vec::new();
+        for exe in exes {
+            if let Ok(png) = stmt.query_row([exe], |r| r.get::<_, Vec<u8>>(0)) {
+                out.push((exe.clone(), png));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Приложения, известные по сохранённой статистике: (exe, читаемое имя).
+    pub fn known_apps(&self) -> Result<Vec<AppRef>> {
+        let mut stmt = self.conn.prepare_cached("SELECT exe, name FROM apps ORDER BY name COLLATE NOCASE, exe")?;
+        let rows = stmt
+            .query_map([], |r| Ok(AppRef { exe: r.get(0)?, name: r.get(1)? }))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Чёрный список приложений.
+    pub fn ignored_apps(&self) -> Result<Vec<AppRef>> {
+        let mut stmt = self.conn.prepare_cached("SELECT exe, name FROM ignored_apps ORDER BY name COLLATE NOCASE, exe")?;
+        let rows = stmt
+            .query_map([], |r| Ok(AppRef { exe: r.get(0)?, name: r.get(1)? }))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Добавляет приложение в чёрный список и **безвозвратно удаляет** всю его сохранённую
+    /// статистику (все дни) и иконку — одной транзакцией. `name` — читаемое имя для списка;
+    /// если приложение уже есть в статистике, берётся сохранённое имя.
+    pub fn add_ignored(&mut self, exe: &str, name: &str) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        let stored: Option<String> =
+            tx.query_row("SELECT name FROM apps WHERE exe = ?1", [exe], |r| r.get(0)).ok();
+        let shown = stored.unwrap_or_else(|| if name.trim().is_empty() { display_name(exe) } else { name.to_string() });
+        tx.execute(
+            "INSERT INTO ignored_apps (exe, name) VALUES (?1, ?2) ON CONFLICT(exe) DO UPDATE SET name = excluded.name",
+            params![exe, shown],
+        )?;
+        tx.execute("DELETE FROM usage WHERE app_id IN (SELECT id FROM apps WHERE exe = ?1)", [exe])?;
+        tx.execute("DELETE FROM apps WHERE exe = ?1", [exe])?;
+        tx.execute("DELETE FROM app_icons WHERE exe = ?1", [exe])?;
+        tx.commit()?;
+        self.app_ids.remove(exe); // кэш id не должен указывать на удалённую запись
+        Ok(())
+    }
+
+    /// Убирает приложение из чёрного списка. Удалённая ранее статистика не восстанавливается.
+    pub fn remove_ignored(&mut self, exe: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM ignored_apps WHERE exe = ?1", [exe])?;
+        Ok(())
+    }
+
     /// Удаляет всю статистику (настройки сохраняются).
     pub fn clear_all(&mut self) -> Result<()> {
         let tx = self.conn.transaction()?;
         tx.execute("DELETE FROM usage", [])?;
         tx.execute("DELETE FROM apps", [])?;
+        tx.execute("DELETE FROM app_icons", [])?;
         tx.commit()?;
         self.app_ids.clear();
         Ok(())
@@ -470,5 +560,147 @@ mod tests {
         assert!(matches!(Db::open_or_recover(&path), Err(Error::UnsupportedSchema(99))));
         assert!(path.exists(), "файл остался на месте");
         cleanup(&path);
+    }
+
+    #[test]
+    fn add_ignored_deletes_all_stored_history_of_that_app_only() {
+        let mut db = Db::open_in_memory().unwrap();
+        db.flush(&[
+            row("2026-01-01", "a.exe", 1_000, 2_000),
+            row("2026-01-02", "a.exe", 3_000, 4_000),
+            row("2026-01-01", "b.exe", 5_000, 6_000),
+        ])
+        .unwrap();
+        db.add_ignored("a.exe", "A").unwrap();
+        assert!(db.usage_for_day("2026-01-02").unwrap().is_empty());
+        let d1 = db.usage_for_day("2026-01-01").unwrap();
+        assert_eq!(d1.len(), 1);
+        assert_eq!(d1[0].exe, "b.exe");
+        assert_eq!(db.apps_in_range("2000-01-01", "2100-01-01").unwrap().len(), 1);
+        assert_eq!(db.buckets_in_range("2000-01-01", "2100-01-01", false).unwrap().iter().map(|b| b.1).sum::<u64>(), 5_000);
+        assert_eq!(db.ignored_apps().unwrap(), vec![AppRef { exe: "a.exe".into(), name: "A".into() }]);
+        assert!(db.known_apps().unwrap().iter().all(|a| a.exe != "a.exe"));
+    }
+
+    #[test]
+    fn add_ignored_keeps_stored_name_and_is_idempotent() {
+        let mut db = Db::open_in_memory().unwrap();
+        db.flush(&[row("d", "code.exe", 1, 1)]).unwrap();
+        db.set_app_name("code.exe", "Visual Studio Code").unwrap();
+        db.add_ignored("code.exe", "ignored-hint").unwrap();
+        db.add_ignored("code.exe", "other").unwrap();
+        let list = db.ignored_apps().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "other", "повторное добавление не создаёт дубликат");
+        let mut db2 = Db::open_in_memory().unwrap();
+        db2.add_ignored("new.exe", "").unwrap();
+        assert_eq!(db2.ignored_apps().unwrap()[0].name, "New", "без имени берётся имя из exe");
+    }
+
+    #[test]
+    fn writing_after_ignore_uses_fresh_app_id() {
+        // Кэш id приложений не должен ссылаться на удалённую запись (иначе внешний ключ упадёт).
+        let mut db = Db::open_in_memory().unwrap();
+        db.flush(&[row("d", "a.exe", 1, 1)]).unwrap();
+        db.flush(&[row("d", "a.exe", 1, 1)]).unwrap(); // кэш прогрет
+        db.add_ignored("a.exe", "A").unwrap();
+        db.remove_ignored("a.exe").unwrap();
+        db.flush(&[row("d", "a.exe", 7, 8)]).unwrap();
+        let got = db.usage_for_day("d").unwrap();
+        assert_eq!((got[0].active_ms, got[0].running_ms), (7, 8), "старая статистика не вернулась");
+    }
+
+    #[test]
+    fn remove_ignored_does_not_restore_data() {
+        let mut db = Db::open_in_memory().unwrap();
+        db.flush(&[row("d", "a.exe", 1, 1)]).unwrap();
+        db.add_ignored("a.exe", "A").unwrap();
+        db.remove_ignored("a.exe").unwrap();
+        assert!(db.ignored_apps().unwrap().is_empty());
+        assert!(db.usage_for_day("d").unwrap().is_empty());
+    }
+
+    #[test]
+    fn clear_all_keeps_blacklist() {
+        let mut db = Db::open_in_memory().unwrap();
+        db.add_ignored("a.exe", "A").unwrap();
+        db.clear_all().unwrap();
+        assert_eq!(db.ignored_apps().unwrap().len(), 1, "чёрный список — настройка, а не статистика");
+    }
+
+    #[test]
+    fn v2_database_is_migrated_to_v3_without_losing_data() {
+        let path = std::env::temp_dir().join(format!("nexus-v2-{}.sqlite3", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch(
+                "CREATE TABLE apps (id INTEGER PRIMARY KEY, exe TEXT NOT NULL UNIQUE, name TEXT NOT NULL);
+                 CREATE TABLE usage (day TEXT NOT NULL, app_id INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+                     active_ms INTEGER NOT NULL DEFAULT 0, running_ms INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (day, app_id)) WITHOUT ROWID;
+                 CREATE INDEX usage_app ON usage(app_id);
+                 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
+                 INSERT INTO apps (exe, name) VALUES ('a.exe', 'Alpha');
+                 INSERT INTO usage VALUES ('2026-05-05', 1, 4000, 6000);
+                 INSERT INTO settings VALUES ('language', 'ru');
+                 PRAGMA user_version = 2;",
+            )
+            .unwrap();
+        }
+        let mut db = Db::open(&path).unwrap();
+        let got = db.usage_for_day("2026-05-05").unwrap();
+        assert_eq!((got[0].name.as_str(), got[0].active_ms, got[0].running_ms), ("Alpha", 4_000, 6_000));
+        assert_eq!(db.get_setting("language").unwrap().as_deref(), Some("ru"));
+        assert!(db.ignored_apps().unwrap().is_empty());
+        db.add_ignored("a.exe", "Alpha").unwrap();
+        assert!(db.usage_for_day("2026-05-05").unwrap().is_empty());
+        drop(db);
+        let version: i32 = Connection::open(&path).unwrap().pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, 3);
+        for ext in ["", "-wal", "-shm"] {
+            let mut f = path.as_os_str().to_os_string();
+            f.push(ext);
+            let _ = std::fs::remove_file(f);
+        }
+    }
+
+    fn fake_png() -> Vec<u8> {
+        crate::icon::encode_png_rgba(2, 2, &[7; 16]).unwrap()
+    }
+
+    #[test]
+    fn icons_are_stored_replaced_and_listed() {
+        let mut db = Db::open_in_memory().unwrap();
+        let png = fake_png();
+        assert!(db.set_icon("a.exe", &png).unwrap());
+        let other = crate::icon::encode_png_rgba(2, 2, &[9; 16]).unwrap();
+        assert!(db.set_icon("a.exe", &other).unwrap(), "новая иконка заменяет прежнюю");
+        assert!(db.set_icon("b.exe", &png).unwrap());
+        let got = db.icons_for(&["a.exe".into(), "b.exe".into(), "none.exe".into()]).unwrap();
+        assert_eq!(got.len(), 2, "для приложения без иконки записи нет");
+        assert_eq!(got.iter().find(|(e, _)| e == "a.exe").unwrap().1, other);
+    }
+
+    #[test]
+    fn garbage_and_ignored_apps_get_no_icon() {
+        let mut db = Db::open_in_memory().unwrap();
+        assert!(!db.set_icon("a.exe", b"definitely not a png, just text bytes here....").unwrap());
+        assert!(!db.set_icon("a.exe", &[]).unwrap());
+        db.add_ignored("secret.exe", "S").unwrap();
+        assert!(!db.set_icon("secret.exe", &fake_png()).unwrap(), "исключённым иконка не нужна");
+        assert!(db.icons_for(&["a.exe".into(), "secret.exe".into()]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn excluding_or_clearing_removes_icons() {
+        let mut db = Db::open_in_memory().unwrap();
+        db.set_icon("a.exe", &fake_png()).unwrap();
+        db.set_icon("b.exe", &fake_png()).unwrap();
+        db.add_ignored("a.exe", "A").unwrap();
+        assert!(db.icons_for(&["a.exe".into()]).unwrap().is_empty(), "при исключении иконка удаляется");
+        assert_eq!(db.icons_for(&["b.exe".into()]).unwrap().len(), 1);
+        db.clear_all().unwrap();
+        assert!(db.icons_for(&["b.exe".into()]).unwrap().is_empty(), "удаление статистики очищает иконки");
     }
 }

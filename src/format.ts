@@ -82,6 +82,8 @@ export function formatRange(
       return a ? capitalize(dtf(locale, { month: "long", year: "numeric" }).format(a)) : from;
     case "year":
       return a ? dtf(locale, { year: "numeric" }).format(a) : from;
+    case "range":
+      return a && b ? dtf(locale, { day: "numeric", month: "short", year: "numeric" }).formatRange(a, b) : `${from} – ${to}`;
     default:
       return labels.allTime;
   }

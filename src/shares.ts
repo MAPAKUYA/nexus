@@ -8,10 +8,22 @@ export interface Share {
   isOther: boolean;
 }
 
-export const SHARE_COLORS = ["#8ea8ff", "#5fd0c4", "#e5b567", "#d68fb6", "#a6c97a"];
-export const OTHER_COLOR = "#4a5268";
+/** Цвета долей — переменные CSS, значения для светлой и тёмной темы заданы в styles.css. */
+export const SHARE_COLORS = ["var(--share-1)", "var(--share-2)", "var(--share-3)", "var(--share-4)", "var(--share-5)"];
+export const OTHER_COLOR = "var(--share-other)";
 
 /** Распределение активного времени: до `max` крупнейших приложений и «Остальные». */
+/**
+ * Постоянные «слоты» полосы распределения: пять приложений по порядку и «остальные».
+ * Слот всегда один и тот же элемент с тем же цветом — поэтому при смене периода его ширина
+ * плавно меняется (в том числе до нуля), а не пересоздаётся.
+ */
+export function shareSlots(shares: Share[], max = 5): (Share | null)[] {
+  const named = shares.filter((s) => !s.isOther);
+  const other = shares.find((s) => s.isOther) ?? null;
+  return [...Array.from({ length: max }, (_, i) => named[i] ?? null), other];
+}
+
 export function buildShares(apps: { name: string; activeMs: number }[], max = 5): Share[] {
   const used = apps.filter((a) => a.activeMs > 0).sort((a, b) => b.activeMs - a.activeMs);
   const total = used.reduce((s, a) => s + a.activeMs, 0);

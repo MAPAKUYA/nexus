@@ -14,12 +14,16 @@ use windows_sys::Win32::{
         LRESULT, SYSTEMTIME, WPARAM,
     },
     Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED},
+    Graphics::Gdi::{
+        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+        DIB_RGB_COLORS,
+    },
     Storage::FileSystem::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW},
     System::{
         LibraryLoader::GetModuleHandleW,
         Registry::{
             RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
-            KEY_READ, KEY_SET_VALUE, REG_SZ,
+            KEY_READ, KEY_SET_VALUE, REG_DWORD, REG_SZ,
         },
         StationsAndDesktops::{CloseDesktop, OpenInputDesktop, DESKTOP_SWITCHDESKTOP},
         SystemInformation::{GetLocalTime, GetTickCount},
@@ -29,8 +33,9 @@ use windows_sys::Win32::{
     },
     UI::{
         Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO},
+        Shell::ExtractIconExW,
         WindowsAndMessaging::{
-            CreateWindowExW, DefWindowProcW, DispatchMessageW, EnumChildWindows, EnumWindows, FindWindowW, PostMessageW,
+            CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, EnumChildWindows, GetIconInfo, HICON, ICONINFO, EnumWindows, FindWindowW, PostMessageW,
             GetForegroundWindow, GetMessageW, GetWindow, GetWindowLongW, GetWindowTextLengthW,
             GetWindowThreadProcessId, IsWindowVisible, RegisterClassW, TranslateMessage, GWL_EXSTYLE, GW_OWNER, MSG,
             WM_APP, WM_ENDSESSION, WM_QUERYENDSESSION,
@@ -59,6 +64,11 @@ pub struct Sampler {
     pid_cache: HashMap<u32, Option<String>>,
     known_names: HashSet<String>,
     new_names: Vec<(String, String)>,
+    /// Нужны ли иконки (настройка «Показывать иконки»). Пока выключено, иконки не извлекаются вообще.
+    want_icons: bool,
+    /// exe, для которых иконку уже пробовали получить в этом запуске (успешно или нет).
+    icon_tried: HashSet<String>,
+    new_icons: Vec<(String, Vec<u8>)>,
 }
 
 impl Sampler {
@@ -70,7 +80,24 @@ impl Sampler {
             pid_cache: HashMap::new(),
             known_names: HashSet::new(),
             new_names: Vec::new(),
+            want_icons: false,
+            icon_tried: HashSet::new(),
+            new_icons: Vec::new(),
         }
+    }
+
+    /// Включает/выключает получение иконок. При включении иконки запрашиваются заново для всех
+    /// приложений, которые видны в ближайших замерах.
+    pub fn set_want_icons(&mut self, want: bool) {
+        if want && !self.want_icons {
+            self.icon_tried.clear();
+        }
+        self.want_icons = want;
+    }
+
+    /// Новые иконки приложений (PNG), найденные с прошлого вызова: `(exe, png)`.
+    pub fn take_new_icons(&mut self) -> Vec<(String, Vec<u8>)> {
+        std::mem::take(&mut self.new_icons)
     }
 
     /// Читаемые имена приложений, найденные с прошлого вызова: `(exe, имя)`.
@@ -138,6 +165,11 @@ impl Sampler {
         let found = query_exe(pid);
         let exe = found.as_ref().map(|(exe, _)| exe.clone());
         if let Some((exe, path)) = found {
+            if self.want_icons && self.icon_tried.insert(exe.clone()) {
+                if let Some(png) = icon_png(&path) {
+                    self.new_icons.push((exe.clone(), png));
+                }
+            }
             if self.known_names.insert(exe.clone()) {
                 if let Some(name) = friendly_name(&path) {
                     self.new_names.push((exe, name));
@@ -183,6 +215,99 @@ fn query_exe(pid: u32) -> Option<(String, String)> {
         let exe = path.rsplit('\\').next().map(|s| s.to_lowercase()).filter(|s| !s.is_empty())?;
         Some((exe, path))
     }
+}
+
+/// Иконка программы как PNG: большая иконка из самого exe-файла (у файла без иконки — `None`).
+/// Читается только изображение иконки, ничего больше.
+fn icon_png(path: &str) -> Option<Vec<u8>> {
+    let path_w = wide(path);
+    let mut large: HICON = std::ptr::null_mut();
+    // SAFETY: путь — нуль-терминированная строка; в `large` система кладёт хэндл иконки, который
+    // мы обязаны освободить (DestroyIcon ниже).
+    unsafe {
+        ExtractIconExW(path_w.as_ptr(), 0, &mut large, std::ptr::null_mut(), 1);
+    }
+    if large.is_null() {
+        return None;
+    }
+    let png = icon_to_png(large);
+    // SAFETY: хэндл получен выше и больше не используется.
+    unsafe {
+        DestroyIcon(large);
+    }
+    png
+}
+
+fn icon_to_png(icon: HICON) -> Option<Vec<u8>> {
+    // SAFETY: ICONINFO — набор чисел и хэндлов, нулевая инициализация допустима.
+    let mut info: ICONINFO = unsafe { std::mem::zeroed() };
+    // SAFETY: `icon` — действующий хэндл; `info` — локальная структура.
+    if unsafe { GetIconInfo(icon, &mut info) } == 0 {
+        return None;
+    }
+    let (color, mask) = (info.hbmColor, info.hbmMask);
+    let png = bitmap_to_png(color, mask);
+    // SAFETY: GetIconInfo передаёт владение обеими картинками нам; освобождаем каждую один раз.
+    unsafe {
+        if !color.is_null() {
+            DeleteObject(color);
+        }
+        if !mask.is_null() {
+            DeleteObject(mask);
+        }
+    }
+    png
+}
+
+/// Пиксели цветной картинки иконки (и её маски прозрачности) → PNG. Одноцветные иконки без
+/// цветной картинки пропускаются.
+fn bitmap_to_png(color: *mut c_void, mask: *mut c_void) -> Option<Vec<u8>> {
+    if color.is_null() {
+        return None;
+    }
+    // SAFETY: BITMAP — набор чисел, нулевая инициализация допустима; `color` — действующая картинка.
+    let (w, h) = unsafe {
+        let mut bm: BITMAP = std::mem::zeroed();
+        if GetObjectW(color, size_of::<BITMAP>() as i32, &mut bm as *mut BITMAP as *mut c_void) == 0 {
+            return None;
+        }
+        (bm.bmWidth, bm.bmHeight)
+    };
+    if w <= 0 || h <= 0 || w as u32 > nexus_core::MAX_ICON_SIDE || h as u32 > nexus_core::MAX_ICON_SIDE {
+        return None;
+    }
+    let len = w as usize * h as usize * 4;
+    // SAFETY: контекст создаётся и освобождается здесь; буферы — локальные векторы нужной длины,
+    // GetDIBits пишет в них не больше `h` строк по `w * 4` байт (32 бита на точку, сверху вниз).
+    let (bgra, mask_px) = unsafe {
+        let hdc = CreateCompatibleDC(std::ptr::null_mut());
+        if hdc.is_null() {
+            return None;
+        }
+        let mut bmi: BITMAPINFO = std::mem::zeroed();
+        bmi.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = w;
+        bmi.bmiHeader.biHeight = -h; // отрицательная высота — строки идут сверху вниз
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+        let mut bgra = vec![0u8; len];
+        let got = GetDIBits(hdc, color, 0, h as u32, bgra.as_mut_ptr() as *mut c_void, &mut bmi, DIB_RGB_COLORS);
+        let mut mask_px = None;
+        if got != 0 && !mask.is_null() {
+            let mut m = vec![0u8; len];
+            if GetDIBits(hdc, mask, 0, h as u32, m.as_mut_ptr() as *mut c_void, &mut bmi, DIB_RGB_COLORS) != 0 {
+                mask_px = Some(m);
+            }
+        }
+        DeleteDC(hdc);
+        if got == 0 {
+            return None;
+        }
+        (bgra, mask_px)
+    };
+    let rgba = nexus_core::bgra_to_rgba(&bgra, mask_px.as_deref());
+    nexus_core::encode_png_rgba(w as u32, h as u32, &rgba)
 }
 
 /// Читаемое имя программы из свойств файла (описание или название продукта).
@@ -418,6 +543,32 @@ pub fn installer_language() -> Option<String> {
     }
     let len = (size as usize / 2).min(buf.len());
     Some(String::from_utf16_lossy(&buf[..len]).trim_end_matches('\0').trim().to_string())
+}
+
+/// Светлая ли тема приложений в Windows (`HKCU\...\Themes\Personalize\AppsUseLightTheme`: 0 — тёмная, 1 — светлая).
+/// Если значения нет (старые сборки Windows 10), считается светлой — как и у WebView2.
+pub fn system_prefers_light() -> bool {
+    let sub = wide("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+    let mut key: HKEY = std::ptr::null_mut();
+    // SAFETY: корректная нуль-терминированная строка и указатель на локальную переменную.
+    let rc = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, sub.as_ptr(), 0, KEY_READ, &mut key) };
+    if rc != 0 {
+        return true;
+    }
+    let name = wide("AppsUseLightTheme");
+    let mut value = 1u32;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    let mut kind = 0u32;
+    // SAFETY: буфер — локальная переменная u32, его размер в байтах передаётся в `size`.
+    let rc = unsafe {
+        RegQueryValueExW(key, name.as_ptr(), std::ptr::null(), &mut kind, &mut value as *mut u32 as *mut u8, &mut size)
+    };
+    // SAFETY: ключ открыт выше.
+    unsafe { RegCloseKey(key) };
+    if rc != 0 || kind != REG_DWORD {
+        return true;
+    }
+    value != 0
 }
 
 // ——— Завершение сеанса Windows ———

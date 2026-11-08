@@ -2,7 +2,17 @@ import type { Dict } from "./types";
 
 export const fr: Dict = {
   units: { h: "h", min: "min", s: "s", sep: " " },
-  periods: { day: "Jour", week: "Semaine", month: "Mois", year: "Année", all: "Tout" },
+  periods: { day: "Jour", week: "Semaine", month: "Mois", year: "Année", all: "Tout", range: "Personnalisé" },
+  rangePicker: {
+    from: "Du",
+    to: "Au",
+    last7: "7 jours",
+    last30: "30 jours",
+    last90: "90 jours",
+    presets: "Sélection rapide (jours)",
+    thisYear: "Cette année",
+    tooLong: "La période est trop longue (50 ans maximum).",
+  },
   common: {
     today: "Aujourd’hui",
     prev: "Précédent",
@@ -38,6 +48,8 @@ export const fr: Dict = {
     focus: "au premier plan",
     emptyToday: "Rien pour l’instant. Travaillez une minute dans n’importe quelle application et elle apparaîtra ici.",
     emptyPeriod: "Aucune donnée pour cette période.",
+    exclude: "Exclure",
+    excludeAria: (n) => `Exclure ${n} du suivi`,
     bar: (n, a, r) => `${n} : au premier plan ${a}, en cours ${r}`,
   },
   status: {
@@ -53,6 +65,15 @@ export const fr: Dict = {
     title: "Paramètres",
     language: "Langue",
     languageHint: "Langue de l’interface",
+    theme: "Thème",
+    themeHint: "Apparence de l’application",
+    themeNames: { system: "Système", light: "Clair", dark: "Sombre" },
+    quickExclude: "Bouton d’exclusion rapide",
+    quickExcludeHint: "Affiche un bouton ⊘ sur chaque application de la liste.",
+    showIcons: "Afficher les icônes des applications",
+    showIconsHint: "Affiche l’icône de chaque application à côté de son nom. Les icônes proviennent des fichiers du programme et ne sont stockées que sur cet ordinateur.",
+    animations: "Animations",
+    animationsHint: "Transitions fluides entre les onglets, les écrans et les thèmes.",
     countIdle: "Compter l’inactivité",
     countIdleHint:
       "Le temps sans souris ni clavier (par exemple devant une vidéo) est aussi compté comme actif. Un écran verrouillé n’est jamais compté",
@@ -70,5 +91,18 @@ export const fr: Dict = {
     confirmDelete: "Supprimer définitivement toutes les statistiques ?",
     confirmYes: "Oui, supprimer",
     deleted: "Statistiques supprimées.",
+  },
+  ignored: {
+    title: "Applications exclues",
+    hint: "Le temps passé dans ces applications n’est pas du tout suivi.",
+    empty: "Aucune application exclue.",
+    add: "Ajouter une application…",
+    search: "Rechercher une application",
+    noMatches: "Aucune application trouvée.",
+    remove: "Retirer",
+    removeAria: (n) => `Retirer ${n} de la liste des exclusions`,
+    confirmTitle: (n) => `Exclure ${n} ?`,
+    confirmBody: "Toutes les statistiques déjà collectées pour cette application seront supprimées définitivement et aucun nouveau temps ne sera suivi. Si vous la retirez plus tard de cette liste, les données ne seront pas rétablies.",
+    confirmYes: "Exclure et supprimer les données",
   },
 };

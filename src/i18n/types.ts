@@ -2,7 +2,19 @@
 export interface Dict {
   /** Единицы длительности; `sep` — разделитель между числом и единицей (у китайского и японского пустой). */
   units: { h: string; min: string; s: string; sep: string };
-  periods: { day: string; week: string; month: string; year: string; all: string };
+  periods: { day: string; week: string; month: string; year: string; all: string; range: string };
+  /** Выбор произвольного диапазона дат. */
+  rangePicker: {
+    from: string;
+    to: string;
+    last7: string;
+    last30: string;
+    last90: string;
+    /** Подпись группы кнопок 7 / 30 / 90 (для экранных дикторов). */
+    presets: string;
+    thisYear: string;
+    tooLong: string;
+  };
   common: {
     today: string;
     prev: string;
@@ -38,6 +50,8 @@ export interface Dict {
     focus: string;
     emptyToday: string;
     emptyPeriod: string;
+    exclude: string;
+    excludeAria: (name: string) => string;
     bar: (name: string, active: string, running: string) => string;
   };
   status: {
@@ -53,6 +67,15 @@ export interface Dict {
     title: string;
     language: string;
     languageHint: string;
+    theme: string;
+    themeHint: string;
+    themeNames: { system: string; light: string; dark: string };
+    showIcons: string;
+    showIconsHint: string;
+    animations: string;
+    animationsHint: string;
+    quickExclude: string;
+    quickExcludeHint: string;
     countIdle: string;
     countIdleHint: string;
     idleThreshold: string;
@@ -68,5 +91,19 @@ export interface Dict {
     confirmDelete: string;
     confirmYes: string;
     deleted: string;
+  };
+  /** Чёрный список приложений: время в них не учитывается, накопленное удаляется. */
+  ignored: {
+    title: string;
+    hint: string;
+    empty: string;
+    add: string;
+    search: string;
+    noMatches: string;
+    remove: string;
+    removeAria: (name: string) => string;
+    confirmTitle: (name: string) => string;
+    confirmBody: string;
+    confirmYes: string;
   };
 }

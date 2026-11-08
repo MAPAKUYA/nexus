@@ -2,7 +2,17 @@ import type { Dict } from "./types";
 
 export const en: Dict = {
   units: { h: "h", min: "min", s: "s", sep: " " },
-  periods: { day: "Day", week: "Week", month: "Month", year: "Year", all: "All time" },
+  periods: { day: "Day", week: "Week", month: "Month", year: "Year", all: "All time", range: "Custom" },
+  rangePicker: {
+    from: "From",
+    to: "To",
+    last7: "7 days",
+    last30: "30 days",
+    last90: "90 days",
+    presets: "Quick range (days)",
+    thisYear: "This year",
+    tooLong: "The range is too long (50 years at most).",
+  },
   common: {
     today: "Today",
     prev: "Previous",
@@ -38,6 +48,8 @@ export const en: Dict = {
     focus: "in focus",
     emptyToday: "Nothing here yet. Work in any app for a minute and it will show up in the list.",
     emptyPeriod: "No data for this period.",
+    exclude: "Exclude",
+    excludeAria: (n) => `Exclude ${n} from tracking`,
     bar: (n, a, r) => `${n}: in focus ${a}, running ${r}`,
   },
   status: {
@@ -53,6 +65,15 @@ export const en: Dict = {
     title: "Settings",
     language: "Language",
     languageHint: "Interface language",
+    theme: "Theme",
+    themeHint: "Appearance of the app",
+    themeNames: { system: "System", light: "Light", dark: "Dark" },
+    quickExclude: "Quick exclude button",
+    quickExcludeHint: "Shows a ⊘ button on each app in the list.",
+    showIcons: "Show app icons",
+    showIconsHint: "Shows each app’s icon next to its name. Icons are taken from the program files and stored only on this computer.",
+    animations: "Animations",
+    animationsHint: "Smooth transitions between tabs, screens and themes.",
     countIdle: "Count idle time",
     countIdleHint:
       "Time without mouse or keyboard input (for example, watching a video) is counted as active too. A locked screen is never counted",
@@ -70,5 +91,18 @@ export const en: Dict = {
     confirmDelete: "Delete all statistics permanently?",
     confirmYes: "Yes, delete",
     deleted: "Statistics deleted.",
+  },
+  ignored: {
+    title: "Excluded apps",
+    hint: "Time in these apps is not tracked at all.",
+    empty: "No excluded apps.",
+    add: "Add app…",
+    search: "Search apps",
+    noMatches: "No apps found.",
+    remove: "Remove",
+    removeAria: (n) => `Remove ${n} from the excluded list`,
+    confirmTitle: (n) => `Exclude ${n}?`,
+    confirmBody: "All statistics already collected for this app will be permanently deleted and no new time will be tracked. Removing the app from this list later will not bring the data back.",
+    confirmYes: "Exclude and delete data",
   },
 };
